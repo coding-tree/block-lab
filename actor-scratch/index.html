@@ -851,7 +851,7 @@ function initMarioProject() {
   const root = createActor('root', 'Game', '🎮', null, 300, 20);
   root.blocks = [
     { type: 'on_start', fields: {} },
-    { type: 'clock_tick', fields: { ms: '800' } },
+    { type: 'clock_tick', fields: { ms: '100' } },
     { type: 'send_all', fields: { msg: 'tick' } },
   ];
 
@@ -894,19 +894,19 @@ function initMarioProject() {
   mario.state = { x: '100', y: '300', vy: '0', grounded: '1', hp: '3' };
   mario.blocks = [
     { type: 'on_msg', fields: { msg: 'gravity' } },
-    { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.vy) + 2' } },
+    { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.vy) + 0.5' } },
     { type: 'state_set', fields: { key: 'y', val: 'Number(stan.y) + Number(stan.vy)' } },
     { type: 'on_msg', fields: { msg: 'ground_check' } },
     { type: 'state_set', fields: { key: 'grounded', val: 'Number(stan.y) >= 300 && Number(stan.vy) >= 0 ? 1 : 0' } },
     { type: 'state_set', fields: { key: 'y', val: 'Number(stan.grounded) === 1 ? Math.min(Number(stan.y), 300) : stan.y' } },
     { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.grounded) === 1 ? 0 : stan.vy' } },
     { type: 'on_msg', fields: { msg: 'move_right' } },
-    { type: 'state_set', fields: { key: 'x', val: 'Number(stan.x) + 5' } },
+    { type: 'state_set', fields: { key: 'x', val: 'Number(stan.x) + 3' } },
     { type: 'send_msg', fields: { to: 'Score', msg: 'step', data: '', color: '#88aaff' } },
     { type: 'on_msg', fields: { msg: 'move_left' } },
-    { type: 'state_set', fields: { key: 'x', val: 'Math.max(0, Number(stan.x) - 5)' } },
+    { type: 'state_set', fields: { key: 'x', val: 'Math.max(0, Number(stan.x) - 3)' } },
     { type: 'on_msg', fields: { msg: 'jump' } },
-    { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.grounded) === 1 ? -14 : stan.vy' } },
+    { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.grounded) === 1 ? -8 : stan.vy' } },
     { type: 'state_set', fields: { key: 'grounded', val: '0' } },
     { type: 'on_msg', fields: { msg: 'hit' } },
     { type: 'state_set', fields: { key: 'hp', val: 'Number(stan.hp) - 1' } },
@@ -927,33 +927,44 @@ function initMarioProject() {
     { type: 'state_set', fields: { key: 'points', val: 'Math.max(0, Number(stan.points) - 50)' } },
   ];
 
-  // Coin — on tick, randomly sends 'coin' to Score
+  // Coin — floats, sends 'coin' to Score randomly
   const coin = createActor('worker', 'Coin', '🪙', supWorld.id, 180, 440);
-  coin.state = { collected: '0' };
+  coin.state = { x: '350', y: '260', collected: '0', bobPhase: '0' };
   coin.blocks = [
     { type: 'on_msg', fields: { msg: 'tick' } },
-    { type: 'state_set', fields: { key: 'collected', val: 'Math.random() < 0.3 ? Number(stan.collected) + 1 : stan.collected' } },
+    { type: 'state_set', fields: { key: 'bobPhase', val: 'Number(stan.bobPhase) + 0.3' } },
+    { type: 'state_set', fields: { key: 'y', val: '260 + Math.sin(Number(stan.bobPhase)) * 8' } },
+    { type: 'state_set', fields: { key: 'collected', val: 'Math.random() < 0.15 ? Number(stan.collected) + 1 : stan.collected' } },
     { type: 'send_msg', fields: { to: 'Score', msg: 'coin', data: '', color: '#ffdd00' } },
   ];
 
-  // Goomba — patrols, sends 'hit' to Mario on tick
+  // Coin2
+  const coin2 = createActor('worker', 'Coin_2', '🪙', supWorld.id, 200, 440);
+  coin2.state = { x: '500', y: '240', bobPhase: '1' };
+  coin2.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'state_set', fields: { key: 'bobPhase', val: 'Number(stan.bobPhase) + 0.3' } },
+    { type: 'state_set', fields: { key: 'y', val: '240 + Math.sin(Number(stan.bobPhase)) * 8' } },
+  ];
+
+  // Goomba — patrols left/right, sends 'hit' to Mario
   const goomba = createActor('worker', 'Goomba', '🍄', supEnem.id, 540, 240);
-  goomba.state = { pos: '0', dir: '1', attacks: '0' };
+  goomba.state = { x: '400', y: '300', dir: '-1', attacks: '0' };
   goomba.blocks = [
     { type: 'on_msg', fields: { msg: 'tick' } },
-    { type: 'state_set', fields: { key: 'pos', val: 'Number(stan.pos) + Number(stan.dir)' } },
-    { type: 'state_set', fields: { key: 'dir', val: 'Number(stan.pos) > 5 ? -1 : Number(stan.pos) < -5 ? 1 : stan.dir' } },
+    { type: 'state_set', fields: { key: 'x', val: 'Number(stan.x) + Number(stan.dir)' } },
+    { type: 'state_set', fields: { key: 'dir', val: 'Number(stan.x) < 300 ? 1 : Number(stan.x) > 500 ? -1 : stan.dir' } },
     { type: 'send_msg', fields: { to: 'Mario', msg: 'hit', data: '10', color: '#ff4444' } },
     { type: 'state_set', fields: { key: 'attacks', val: 'Number(stan.attacks) + 1' } },
   ];
 
-  // Koopa — slower enemy, sends 'hit' every other tick
+  // Koopa — slower patrol, wider range
   const koopa = createActor('worker', 'Koopa', '🐢', supEnem.id, 660, 350);
-  koopa.state = { pos: '0', cooldown: '0' };
+  koopa.state = { x: '600', y: '300', dir: '-0.7' };
   koopa.blocks = [
     { type: 'on_msg', fields: { msg: 'tick' } },
-    { type: 'state_set', fields: { key: 'cooldown', val: 'Number(stan.cooldown) + 1' } },
-    { type: 'state_set', fields: { key: 'pos', val: 'Number(stan.pos) + 1' } },
+    { type: 'state_set', fields: { key: 'x', val: 'Number(stan.x) + Number(stan.dir)' } },
+    { type: 'state_set', fields: { key: 'dir', val: 'Number(stan.x) < 500 ? 0.7 : Number(stan.x) > 700 ? -0.7 : stan.dir' } },
   ];
 
   buildPalette();
@@ -1462,7 +1473,9 @@ function toggleRun() {
     document.getElementById('sb-tick').textContent = `zatrzymany (${S.tickCount} ticków)`;
     document.getElementById('sb-tick').style.color = 'var(--muted)';
     clearInterval(S.tickInterval);
+    S.gameLoop = false;
     renderScene();
+    renderGameView();
   }
 }
 
@@ -1520,8 +1533,17 @@ function startRuntime() {
     });
 
     updateStatus();
-    renderGameView();
   }, tickMs);
+
+  // Smooth 60fps game rendering loop
+  if (!S.gameLoop) {
+    S.gameLoop = true;
+    (function gameLoop() {
+      if (!S.running) { S.gameLoop = false; return; }
+      renderGameView();
+      requestAnimationFrame(gameLoop);
+    })();
+  }
 }
 
 function deliverMsg(fromId, toId, msgType, data, color) {
