@@ -883,48 +883,7 @@
         <span class="emoji">🧩</span>
         Przeciągnij bloki tutaj i zbuduj swój program!
         <div class="subtitle">...albo wypróbuj gotowy przykład:</div>
-        <div class="examples-grid">
-          <div class="example-card" onclick="loadExample('hello')">
-            <div class="ex-icon">👋</div>
-            <div class="ex-title">Powitanie</div>
-            <div class="ex-desc">Zapisz imię w zmiennej i przywitaj się!</div>
-          </div>
-          <div class="example-card" onclick="loadExample('animal')">
-            <div class="ex-icon">🐾</div>
-            <div class="ex-title">Losowe zwierzę</div>
-            <div class="ex-desc">Wylosuj zwierzę i powiedz co robi.</div>
-          </div>
-          <div class="example-card" onclick="loadExample('countdown')">
-            <div class="ex-icon">🚀</div>
-            <div class="ex-title">Odliczanie</div>
-            <div class="ex-desc">Odlicz od 3 do startu rakiety!</div>
-          </div>
-          <div class="example-card" onclick="loadExample('story')">
-            <div class="ex-icon">📖</div>
-            <div class="ex-title">Generator zdań</div>
-            <div class="ex-desc">Losuj słowa i buduj śmieszne zdania.</div>
-          </div>
-          <div class="example-card" onclick="loadExample('quiz')">
-            <div class="ex-icon">📎</div>
-            <div class="ex-title">Quiz zwierzęcy</div>
-            <div class="ex-desc">Grupa + Powtórz = 3 rundy quizu!</div>
-          </div>
-          <div class="example-card" onclick="loadExample('mathDemo')">
-            <div class="ex-icon">🎲</div>
-            <div class="ex-title">Gra w kości</div>
-            <div class="ex-desc">Rzuć 3x kostką, licz punkty i średnią!</div>
-          </div>
-          <div class="example-card" onclick="loadExample('ifElseDemo')">
-            <div class="ex-icon">❓</div>
-            <div class="ex-title">Jeżeli... to...</div>
-            <div class="ex-desc">Losuj zwierzę i sprawdź czy to kot!</div>
-          </div>
-          <div class="example-card" onclick="loadExample('debugDemo')">
-            <div class="ex-icon">⏸</div>
-            <div class="ex-title">Pauza demo</div>
-            <div class="ex-desc">Zatrzymaj program i sprawdź zmienne.</div>
-          </div>
-        </div>
+        <div class="examples-grid" id="examplesGrid"></div>
         <div id="savedProjectsHint"></div>
       </div>
       <div class="script-stack" id="scriptStack"></div>
@@ -1982,115 +1941,231 @@ function sleep(ms) {
 
 // ── EXAMPLES ──
 const EXAMPLES = {
-  hello: [
-    { type: 'start', vals: {} },
-    { type: 'set-var', vals: { name: 'imię', value: 'Zosia' } },
-    { type: 'say', vals: { text: 'Cześć {imię}!' } },
-    { type: 'say', vals: { text: 'Miło Cię poznać!' } },
-    { type: 'wait', vals: { secs: '1' } },
-    { type: 'say', vals: { text: 'Pa pa, {imię}! Do zobaczenia!' } },
-  ],
-  animal: [
-    { type: 'start', vals: {} },
-    { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
-    { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
-    { type: 'if-random', vals: { options: 'śpi, je, biega, tańczy, śpiewa' } },
-    { type: 'say', vals: { text: 'Mój {zwierzę} właśnie {_random}!' } },
-  ],
-  countdown: [
-    { type: 'start', vals: {} },
-    { type: 'set-var', vals: { name: 'licznik', value: '5' } },
-    { type: 'say', vals: { text: 'Uwaga! Odliczam od {licznik}...' } },
-    { type: 'repeat', vals: { times: '5' } },
-    { type: 'group', vals: { name: 'odliczanie' }, children: [
-      { type: 'say', vals: { text: '{licznik}...' } },
-      { type: 'change-var', vals: { name: 'licznik', delta: '-1' } },
-      { type: 'wait', vals: { secs: '1' } },
-    ]},
-    { type: 'say', vals: { text: '🚀 START! Rakieta wystartowała!' } },
-  ],
-  story: [
-    { type: 'start', vals: {} },
-    { type: 'set-var', vals: { name: 'ile', value: '0' } },
-    { type: 'say', vals: { text: 'Generuję 3 śmieszne zdania!' } },
-    { type: 'repeat', vals: { times: '3' } },
-    { type: 'group', vals: { name: 'generuj zdanie' }, children: [
-      { type: 'change-var', vals: { name: 'ile', delta: '1' } },
-      { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny, Latający' } },
-      { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
-      { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat, astronauta' } },
-      { type: 'set-var', vals: { name: 'kto', value: '{_random}' } },
-      { type: 'if-random', vals: { options: 'poszedł na lody, poleciał na Marsa, znalazł skarb, nauczył się latać' } },
-      { type: 'say', vals: { text: '{ile}. {jaki} {kto} {_random}!' } },
-    ]},
-    { type: 'say', vals: { text: 'Wygenerowano {ile} zdań!' } },
-  ],
-  quiz: [
-    { type: 'start', vals: {} },
-    { type: 'say', vals: { text: 'Quiz zwierzęcy! 3 rundy!' } },
-    { type: 'repeat', vals: { times: '3' } },
-    { type: 'group', vals: { name: 'runda quizu' }, children: [
-      { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, delfin, orzeł' } },
-      { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
-      { type: 'if-random', vals: { options: 'lata, pływa, biega, skacze, czołga się' } },
-      { type: 'say', vals: { text: 'Czy {zwierzę} {_random}? 🤔' } },
-      { type: 'wait', vals: { secs: '2' } },
-    ]},
-    { type: 'say', vals: { text: 'Koniec quizu! 🎉' } },
-  ],
-  debugDemo: [
-    { type: 'start', vals: {} },
-    { type: 'set-var', vals: { name: 'licznik', value: '0' } },
-    { type: 'debug-stop', vals: { msg: 'przed losowaniem' } },
-    { type: 'if-random', vals: { options: 'jabłko, banan, winogrono, arbuz' } },
-    { type: 'set-var', vals: { name: 'owoc', value: '{_random}' } },
-    { type: 'debug-stop', vals: { msg: 'po losowaniu — sprawdź zmienne' } },
-    { type: 'say', vals: { text: 'Wylosowany owoc: {owoc}!' } },
-    { type: 'say', vals: { text: 'Sprawdź zakładkę Zmienne i Konsolę!' } },
-  ],
-  ifElseDemo: [
-    { type: 'start', vals: {} },
-    { type: 'if-random', vals: { options: 'kot, pies, papuga' } },
-    { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
-    { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'kot' },
-      children: [
-        { type: 'say', vals: { text: '🐱 Miau! To kot!' } },
-      ],
-      elseChildren: [
-        { type: 'say', vals: { text: '🤷 To nie kot, to {zwierzę}!' } },
-      ],
-    },
-    { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'papuga' },
-      children: [
-        { type: 'say', vals: { text: '🦜 Papuga mówi: Witaj!' } },
-      ],
-      elseChildren: [],
-    },
-    { type: 'say', vals: { text: 'Koniec sprawdzania!' } },
-  ],
-  mathDemo: [
-    { type: 'start', vals: {} },
-    { type: 'set-var', vals: { name: 'punkty', value: '0' } },
-    { type: 'say', vals: { text: 'Gra w kości! 3 rzuty.' } },
-    { type: 'repeat', vals: { times: '3' } },
-    { type: 'group', vals: { name: 'rzut kostką' }, children: [
-      { type: 'random-num', vals: { name: 'kostka', min: '1', max: '6' } },
-      { type: 'say', vals: { text: '🎲 Wyrzuciłeś: {kostka}' } },
-      { type: 'change-var', vals: { name: 'punkty', delta: '{kostka}' } },
-      { type: 'wait', vals: { secs: '1' } },
-    ]},
-    { type: 'say', vals: { text: 'Suma punktów: {punkty}' } },
-    { type: 'math-set', vals: { name: 'średnia', expr: '{punkty} / 3' } },
-    { type: 'say', vals: { text: 'Średnia: {średnia}' } },
-    { type: 'if-else', vals: { left: '{punkty}', op: '>', right: '12' },
-      children: [
-        { type: 'say', vals: { text: '🏆 Świetny wynik!' } },
-      ],
-      elseChildren: [
-        { type: 'say', vals: { text: '💪 Następnym razem będzie lepiej!' } },
-      ],
-    },
-  ],
+  hello: {
+    icon: '👋', title: 'Powitanie', desc: 'Zapisz imię w zmiennej i przywitaj się!',
+    versions: [
+      { label: 'prosta', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Cześć Zosia!' } },
+        { type: 'say', vals: { text: 'Miło Cię poznać!' } },
+        { type: 'say', vals: { text: 'Pa pa!' } },
+      ]},
+      { label: 'ze zmienną', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'imię', value: 'Zosia' } },
+        { type: 'say', vals: { text: 'Cześć {imię}!' } },
+        { type: 'say', vals: { text: 'Miło Cię poznać!' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: 'Pa pa, {imię}! Do zobaczenia!' } },
+      ]},
+    ],
+  },
+  animal: {
+    icon: '🐾', title: 'Losowe zwierzę', desc: 'Wylosuj zwierzę i powiedz co robi.',
+    versions: [
+      { label: 'jedno losowanie', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
+        { type: 'say', vals: { text: 'Mój zwierzak to: {_random}!' } },
+      ]},
+      { label: 'zwierzę + akcja', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
+        { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+        { type: 'if-random', vals: { options: 'śpi, je, biega, tańczy, śpiewa' } },
+        { type: 'say', vals: { text: 'Mój {zwierzę} właśnie {_random}!' } },
+      ]},
+      { label: '3 zwierzęta w pętli', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Losujemy 3 zwierzęta!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'losowanie' }, children: [
+          { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
+          { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'śpi, je, biega, tańczy, śpiewa' } },
+          { type: 'say', vals: { text: 'Mój {zwierzę} właśnie {_random}!' } },
+          { type: 'wait', vals: { secs: '1' } },
+        ]},
+      ]},
+    ],
+  },
+  countdown: {
+    icon: '🚀', title: 'Odliczanie', desc: 'Odlicz do startu rakiety!',
+    versions: [
+      { label: 'ręczne 3-2-1', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Uwaga! Odliczam...' } },
+        { type: 'say', vals: { text: '3...' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: '2...' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: '1...' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: '🚀 START!' } },
+      ]},
+      { label: 'pętla + matematyka', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'licznik', value: '5' } },
+        { type: 'say', vals: { text: 'Uwaga! Odliczam od {licznik}...' } },
+        { type: 'repeat', vals: { times: '5' } },
+        { type: 'group', vals: { name: 'odliczanie' }, children: [
+          { type: 'say', vals: { text: '{licznik}...' } },
+          { type: 'change-var', vals: { name: 'licznik', delta: '-1' } },
+          { type: 'wait', vals: { secs: '1' } },
+        ]},
+        { type: 'say', vals: { text: '🚀 START! Rakieta wystartowała!' } },
+      ]},
+    ],
+  },
+  story: {
+    icon: '📖', title: 'Generator zdań', desc: 'Losuj słowa i buduj śmieszne zdania.',
+    versions: [
+      { label: 'jedno zdanie', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny' } },
+        { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
+        { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat' } },
+        { type: 'say', vals: { text: '{jaki} {_random} poszedł na lody!' } },
+      ]},
+      { label: '3 zdania w pętli', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'ile', value: '0' } },
+        { type: 'say', vals: { text: 'Generuję 3 śmieszne zdania!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'generuj zdanie' }, children: [
+          { type: 'change-var', vals: { name: 'ile', delta: '1' } },
+          { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny, Latający' } },
+          { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat, astronauta' } },
+          { type: 'set-var', vals: { name: 'kto', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'poszedł na lody, poleciał na Marsa, znalazł skarb, nauczył się latać' } },
+          { type: 'say', vals: { text: '{ile}. {jaki} {kto} {_random}!' } },
+        ]},
+        { type: 'say', vals: { text: 'Wygenerowano {ile} zdań!' } },
+      ]},
+    ],
+  },
+  quiz: {
+    icon: '📎', title: 'Quiz zwierzęcy', desc: 'Grupa + Powtórz = 3 rundy quizu!',
+    versions: [
+      { label: 'bez punktów', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Quiz zwierzęcy! 3 rundy!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'runda quizu' }, children: [
+          { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, delfin, orzeł' } },
+          { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'lata, pływa, biega, skacze, czołga się' } },
+          { type: 'say', vals: { text: 'Czy {zwierzę} {_random}? 🤔' } },
+          { type: 'wait', vals: { secs: '2' } },
+        ]},
+        { type: 'say', vals: { text: 'Koniec quizu! 🎉' } },
+      ]},
+      { label: 'z punktacją', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'punkty', value: '0' } },
+        { type: 'say', vals: { text: 'Quiz zwierzęcy z punktami! 3 rundy!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'runda quizu' }, children: [
+          { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, delfin, orzeł' } },
+          { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'lata, pływa, biega, skacze, czołga się' } },
+          { type: 'say', vals: { text: 'Czy {zwierzę} {_random}? 🤔' } },
+          { type: 'random-num', vals: { name: 'runda_pkt', min: '1', max: '10' } },
+          { type: 'change-var', vals: { name: 'punkty', delta: '{runda_pkt}' } },
+          { type: 'say', vals: { text: '+{runda_pkt} pkt! Razem: {punkty}' } },
+          { type: 'wait', vals: { secs: '2' } },
+        ]},
+        { type: 'say', vals: { text: 'Wynik końcowy: {punkty} punktów! 🏆' } },
+      ]},
+    ],
+  },
+  mathDemo: {
+    icon: '🎲', title: 'Gra w kości', desc: 'Rzuć kostką, licz punkty i średnią!',
+    versions: [
+      { label: '1 rzut', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'random-num', vals: { name: 'kostka', min: '1', max: '6' } },
+        { type: 'say', vals: { text: '🎲 Wyrzuciłeś: {kostka}!' } },
+      ]},
+      { label: '3 rzuty + średnia', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'punkty', value: '0' } },
+        { type: 'say', vals: { text: 'Gra w kości! 3 rzuty.' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'rzut kostką' }, children: [
+          { type: 'random-num', vals: { name: 'kostka', min: '1', max: '6' } },
+          { type: 'say', vals: { text: '🎲 Wyrzuciłeś: {kostka}' } },
+          { type: 'change-var', vals: { name: 'punkty', delta: '{kostka}' } },
+          { type: 'wait', vals: { secs: '1' } },
+        ]},
+        { type: 'say', vals: { text: 'Suma punktów: {punkty}' } },
+        { type: 'math-set', vals: { name: 'średnia', expr: '{punkty} / 3' } },
+        { type: 'say', vals: { text: 'Średnia: {średnia}' } },
+        { type: 'if-else', vals: { left: '{punkty}', op: '>', right: '12' },
+          children: [
+            { type: 'say', vals: { text: '🏆 Świetny wynik!' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '💪 Następnym razem będzie lepiej!' } },
+          ],
+        },
+      ]},
+    ],
+  },
+  ifElseDemo: {
+    icon: '❓', title: 'Jeżeli... to...', desc: 'Losuj zwierzę i sprawdź czy to kot!',
+    versions: [
+      { label: 'prosty warunek', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga' } },
+        { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+        { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'kot' },
+          children: [
+            { type: 'say', vals: { text: '🐱 Miau! To kot!' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '🤷 To nie kot, to {zwierzę}!' } },
+          ],
+        },
+      ]},
+      { label: 'wiele warunków', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga' } },
+        { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+        { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'kot' },
+          children: [
+            { type: 'say', vals: { text: '🐱 Miau! To kot!' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '🤷 To nie kot, to {zwierzę}!' } },
+          ],
+        },
+        { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'papuga' },
+          children: [
+            { type: 'say', vals: { text: '🦜 Papuga mówi: Witaj!' } },
+          ],
+          elseChildren: [],
+        },
+        { type: 'say', vals: { text: 'Koniec sprawdzania!' } },
+      ]},
+    ],
+  },
+  debugDemo: {
+    icon: '⏸', title: 'Pauza demo', desc: 'Zatrzymaj program i sprawdź zmienne.',
+    versions: [
+      { label: 'z pauzami', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'licznik', value: '0' } },
+        { type: 'debug-stop', vals: { msg: 'przed losowaniem' } },
+        { type: 'if-random', vals: { options: 'jabłko, banan, winogrono, arbuz' } },
+        { type: 'set-var', vals: { name: 'owoc', value: '{_random}' } },
+        { type: 'debug-stop', vals: { msg: 'po losowaniu — sprawdź zmienne' } },
+        { type: 'say', vals: { text: 'Wylosowany owoc: {owoc}!' } },
+        { type: 'say', vals: { text: 'Sprawdź zakładkę Zmienne i Konsolę!' } },
+      ]},
+    ],
+  },
 };
 
 function cloneBlocks(arr) {
@@ -2102,16 +2177,38 @@ function cloneBlocks(arr) {
   });
 }
 
-function loadExample(name) {
+function loadExample(name, vIdx) {
   const example = EXAMPLES[name];
   if (!example) return;
-  blocks = cloneBlocks(example);
+  const ver = example.versions[vIdx !== undefined ? vIdx : example.versions.length - 1];
+  if (!ver) return;
+  blocks = cloneBlocks(ver.blocks);
   renderBlocks();
+}
+
+// ── RENDER EXAMPLES ──
+function renderExamplesGrid() {
+  const grid = document.getElementById('examplesGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  Object.entries(EXAMPLES).forEach(([key, ex]) => {
+    let html = `<div class="example-card" style="cursor:default">`;
+    html += `<div class="ex-icon">${ex.icon}</div>`;
+    html += `<div class="ex-title">${ex.title}</div>`;
+    html += `<div class="ex-desc">${ex.desc}</div>`;
+    html += `<div class="project-versions" style="margin-top:6px;">`;
+    ex.versions.forEach((v, i) => {
+      html += `<span class="version-chip" onclick="event.stopPropagation();loadExample('${key}',${i})" title="${v.label}">v${i + 1} · ${v.label}</span>`;
+    });
+    html += `</div></div>`;
+    grid.insertAdjacentHTML('beforeend', html);
+  });
 }
 
 // ── INIT ──
 const BUILD_HASH = '__COMMIT_HASH__';
 renderBlocks();
+renderExamplesGrid();
 toggleAiBlocks(false);
 document.getElementById('commitHash').textContent = BUILD_HASH;
 </script>
