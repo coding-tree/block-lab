@@ -248,6 +248,16 @@
     gap: 0;
   }
   .block-row .block, .block-row .block-group, .block-row .block-if-else { flex: 1; min-width: 0; }
+  .drop-gap {
+    height: 2px;
+    border-radius: 2px;
+    transition: height .12s, background .12s;
+  }
+  .drop-gap.drag-over {
+    height: 8px;
+    background: var(--accent2);
+    box-shadow: 0 0 8px var(--accent2);
+  }
   .block-move-col {
     display: flex;
     flex-direction: column;
@@ -1330,10 +1340,47 @@ function setupDropZone(el, targetArr, path, singleSlot) {
   });
 }
 
+function createDropGap(blkArray, insertIdx) {
+  const gap = document.createElement('div');
+  gap.className = 'drop-gap';
+  gap.addEventListener('dragover', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.dataTransfer.dropEffect = 'copy';
+    gap.classList.add('drag-over');
+  });
+  gap.addEventListener('dragleave', () => gap.classList.remove('drag-over'));
+  gap.addEventListener('drop', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    gap.classList.remove('drag-over');
+    const type = ev.dataTransfer.getData('block-type');
+    if (type) {
+      const newBlock = initNewBlock(type);
+      if (newBlock) blkArray.splice(insertIdx, 0, newBlock);
+      renderBlocks();
+      return;
+    }
+    if (dragSrc !== null) {
+      const moved = removeByPath(String(dragSrc));
+      if (moved) {
+        // re-resolve insert index after removal
+        blkArray.splice(Math.min(insertIdx, blkArray.length), 0, moved);
+      }
+      renderBlocks();
+      dragSrc = null;
+    }
+  });
+  return gap;
+}
+
 function renderBlockList(blkArray, container, parentPath) {
   blkArray.forEach((b, idx) => {
     const def = BLOCK_DEFS[b.type];
     const path = parentPath ? `${parentPath}.${idx}` : `${idx}`;
+
+    // drop gap before each block
+    container.appendChild(createDropGap(blkArray, idx));
 
     if (def.isGroup) {
       const wrapper = document.createElement('div');
@@ -1469,33 +1516,15 @@ function renderBlockList(blkArray, container, parentPath) {
         ev.dataTransfer.setData('block-path', path);
         ev.dataTransfer.effectAllowed = 'move';
       });
-      el.addEventListener('dragover', ev => {
-        ev.preventDefault();
-        ev.dataTransfer.dropEffect = 'move';
-      });
-      el.addEventListener('drop', ev => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const type = ev.dataTransfer.getData('block-type');
-        if (type) return; // palette drop handled by canvas
-        if (dragSrc !== null && String(dragSrc) !== path) {
-          const srcArr = getArrayAndIndex(String(dragSrc));
-          const dstArr = getArrayAndIndex(path);
-          if (srcArr && dstArr) {
-            const moved = srcArr.arr.splice(srcArr.idx, 1)[0];
-            const newDst = getArrayAndIndex(path); // re-resolve after splice
-            if (newDst) newDst.arr.splice(newDst.idx, 0, moved);
-            else blocks.push(moved);
-            renderBlocks();
-          }
-          dragSrc = null;
-        }
-      });
 
       const row = wrapWithMoveCol(el, path, idx, blkArray.length);
       container.appendChild(row);
     }
   });
+  // trailing drop gap after last block
+  if (blkArray.length > 0) {
+    container.appendChild(createDropGap(blkArray, blkArray.length));
+  }
 }
 
 function wrapWithMoveCol(el, path, idx, len) {
