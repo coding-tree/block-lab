@@ -596,6 +596,7 @@
 
   /* ── BLOCK COLORS ── */
   .b-start    { background: #2d4a22; color: #a8ff78; border-color: #6bcb77; }
+  .b-end      { background: #4a2222; color: #ff9999; border-color: #cc4444; }
   .b-ai       { background: #2d1f4a; color: #c9a0ff; border-color: #c77dff; }
   .b-say      { background: #4a3a00; color: #ffd93d; border-color: #ffd93d; }
   .b-wait     { background: #1f3a4a; color: #7dd3fc; border-color: #4d9de0; }
@@ -843,6 +844,9 @@
     <div class="block-template b-start" draggable="true" data-type="start">
       🚩 Kiedy kliknięto
     </div>
+    <div class="block-template b-end" draggable="true" data-type="end">
+      🛑 Zakończ program
+    </div>
 
     <h3>🤖 AI</h3>
     <div class="block-template b-ai" draggable="true" data-type="ai-ask">
@@ -961,6 +965,7 @@ let currentExample = null; // { name, vIdx }
 
 const BLOCK_DEFS = {
   'start':      { label: '🚩 Kiedy kliknięto', cls: 'b-start', inputs: [] },
+  'end':        { label: '🛑 Zakończ program', cls: 'b-end', inputs: [] },
   'ai-ask':     { label: '🤖 Zapytaj AI:', cls: 'b-ai', inputs: [{ key: 'text', placeholder: 'Skąd bierze się tęcza?' }] },
   'ai-story':   { label: '📖 Napisz historię o:', cls: 'b-ai', inputs: [{ key: 'topic', placeholder: 'dinozaurach' }] },
   'ai-explain': { label: '💡 Wyjaśnij:', cls: 'b-ai', inputs: [{ key: 'concept', placeholder: 'grawitację' }] },
@@ -1725,6 +1730,8 @@ async function callAI(prompt) {
 }
 
 // ── RUNNER ──
+class EndProgram {}
+
 async function runScript() {
   document.getElementById('outputBody').innerHTML = '';
   document.getElementById('consoleBody').innerHTML = '';
@@ -1753,8 +1760,12 @@ async function runScript() {
       clog('✅ Program zakończony');
     }
   } catch (e) {
-    log(e.message, 'error');
-    clog(`❌ Błąd: ${e.message}`);
+    if (e instanceof EndProgram) {
+      clog('✅ Program zakończony (blok Zakończ)');
+    } else {
+      log(e.message, 'error');
+      clog(`❌ Błąd: ${e.message}`);
+    }
   }
 }
 
@@ -1767,6 +1778,12 @@ async function executeBlocks(blks, startIdx) {
     clog(`Blok ${i + 1}: ${BLOCK_DEFS[b.type]?.label || b.type}`);
 
     switch (b.type) {
+      case 'end': {
+        log('🛑 Program zakończony przez blok "Zakończ"', 'info');
+        clog('  🛑 Zakończ program');
+        throw new EndProgram();
+      }
+
       case 'say': {
         let text = vals.text || '(puste)';
         text = interpolateVars(text);
