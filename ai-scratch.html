@@ -1166,12 +1166,14 @@ function renderSavedProjectsHint() {
   html += '<div class="examples-grid">';
   names.forEach(name => {
     const p = projects[name];
-    const lastV = p.versions[p.versions.length - 1];
-    const lastIdx = p.versions.length - 1;
-    html += `<div class="example-card" onclick="loadVersion('${escHtml(name)}',${lastIdx})">`;
+    html += `<div class="example-card" style="cursor:default">`;
     html += `<div class="ex-icon">💾</div>`;
     html += `<div class="ex-title">${escHtml(name)}</div>`;
-    html += `<div class="ex-desc">${p.versions.length} wersji · ostatnia: ${lastV.date}</div>`;
+    html += `<div class="project-versions" style="margin-top:6px;">`;
+    p.versions.forEach((v, i) => {
+      html += `<span class="version-chip" onclick="event.stopPropagation();loadVersion('${escHtml(name)}',${i})" title="${v.date}">v${v.v}</span>`;
+    });
+    html += `</div>`;
     html += `</div>`;
   });
   html += '</div>';
