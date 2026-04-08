@@ -428,6 +428,14 @@
 
   /* ── DEBUG BLOCK COLOR ── */
   .b-debug { background: #4a2222; color: #ff7777; border-color: #ff4444; }
+  .block.disabled { opacity: .35; }
+  .block.disabled::after {
+    content: '⊘';
+    position: absolute;
+    right: 40px;
+    font-size: 14px;
+    color: #ffffff55;
+  }
 
   @keyframes slidein {
     from { opacity: 0; transform: translateX(8px); }
@@ -840,7 +848,7 @@ function renderBlocks() {
     const def = BLOCK_DEFS[b.type];
 
     const el = document.createElement('div');
-    el.className = `block ${def.cls}`;
+    el.className = `block ${def.cls}${b.disabled ? ' disabled' : ''}`;
     el.dataset.idx = idx;
 
     let html = `<span style="pointer-events:none">${def.label}</span>`;
@@ -853,6 +861,9 @@ function renderBlocks() {
       html += `<button class="block-expand" onclick="event.stopPropagation();openTextPopup(${idx},'${inp.key}','${escHtml(def.label)} ${escHtml(inp.placeholder)}')" title="Rozwiń">⤢</button>`;
     });
     if (def.suffix) html += ` <span style="pointer-events:none">${def.suffix}</span>`;
+    if (b.type === 'debug-stop') {
+      html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlock(${idx})" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
+    }
     html += `<button class="block-delete" onclick="deleteBlock(${idx})" title="Usuń blok">✕</button>`;
     el.innerHTML = html;
 
@@ -887,6 +898,11 @@ function updateVal(idx, key, val) {
 
 function deleteBlock(idx) {
   blocks.splice(idx, 1);
+  renderBlocks();
+}
+
+function toggleBlock(idx) {
+  blocks[idx].disabled = !blocks[idx].disabled;
   renderBlocks();
 }
 
@@ -1018,6 +1034,7 @@ async function executeBlocks(blks, startIdx) {
   for (let i = startIdx; i < blks.length; i++) {
     if (debugStopped) return;
     const b = blks[i];
+    if (b.disabled) { clog(`Blok ${i + 1}: ${BLOCK_DEFS[b.type]?.label || b.type} [wyłączony]`); continue; }
     const vals = b.vals;
     clog(`Blok ${i + 1}: ${BLOCK_DEFS[b.type]?.label || b.type}`);
 
