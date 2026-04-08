@@ -925,6 +925,7 @@
             <div class="ex-desc">Zatrzymaj program i sprawdź zmienne.</div>
           </div>
         </div>
+        <div id="savedProjectsHint"></div>
       </div>
       <div class="script-stack" id="scriptStack"></div>
     </div>
@@ -1155,6 +1156,28 @@ function renderProjectList() {
   });
 }
 
+function renderSavedProjectsHint() {
+  const el = document.getElementById('savedProjectsHint');
+  if (!el) return;
+  const projects = getProjects();
+  const names = Object.keys(projects);
+  if (names.length === 0) { el.innerHTML = ''; return; }
+  let html = '<div class="subtitle" style="margin-top:20px;">...lub otwórz zapisany projekt:</div>';
+  html += '<div class="examples-grid">';
+  names.forEach(name => {
+    const p = projects[name];
+    const lastV = p.versions[p.versions.length - 1];
+    const lastIdx = p.versions.length - 1;
+    html += `<div class="example-card" onclick="loadVersion('${escHtml(name)}',${lastIdx})">`;
+    html += `<div class="ex-icon">💾</div>`;
+    html += `<div class="ex-title">${escHtml(name)}</div>`;
+    html += `<div class="ex-desc">${p.versions.length} wersji · ostatnia: ${lastV.date}</div>`;
+    html += `</div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
 function onResume() {
   debugStopped = false;
   resumeDebug();
@@ -1218,6 +1241,7 @@ function renderBlocks() {
   const stack = document.getElementById('scriptStack');
   const hint = document.getElementById('dropHint');
   hint.style.display = blocks.length ? 'none' : '';
+  if (!blocks.length) renderSavedProjectsHint();
 
   stack.innerHTML = '';
   renderBlockList(blocks, stack, null);
