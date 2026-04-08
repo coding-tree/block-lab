@@ -426,6 +426,48 @@
   .var-table td:last-child { color: var(--accent2); }
   .var-empty { color: var(--muted); font-size: 12px; font-style: italic; }
 
+  /* ── GROUP BLOCK ── */
+  .b-group { background: #1f2a4a; color: #88aaff; border-color: #4466cc; }
+  .block-group {
+    border-radius: var(--block-radius);
+    border: 2px solid #4466cc;
+    background: #1f2a4a;
+    position: relative;
+  }
+  .block-group-header {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #88aaff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .block-group-body {
+    min-height: 40px;
+    margin: 0 8px 8px;
+    padding: 8px;
+    border-radius: 8px;
+    background: #0f0e17aa;
+    border: 2px dashed #4466cc44;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: border-color .15s, background .15s;
+  }
+  .block-group-body.drag-over {
+    border-color: #4466cc;
+    background: #4466cc22;
+  }
+  .block-group-body .block::before { display: none; }
+  .block-group-hint {
+    text-align: center;
+    color: #4466cc66;
+    font-size: 11px;
+    padding: 6px;
+    pointer-events: none;
+  }
+
   /* ── DEBUG BLOCK COLOR ── */
   .b-debug { background: #4a2222; color: #ff7777; border-color: #ff4444; }
   .block.disabled { opacity: .35; }
@@ -614,6 +656,9 @@
     <div class="block-template b-if" draggable="true" data-type="if-random">
       🎲 Losowo jeden z: <em style="opacity:.6">opcja1, opcja2</em>
     </div>
+    <div class="block-template b-group" draggable="true" data-type="group">
+      📎 Grupa: <em style="opacity:.6">nazwa</em>
+    </div>
 
     <h3>📦 Zmienne</h3>
     <div class="block-template b-var" draggable="true" data-type="set-var">
@@ -705,6 +750,7 @@ const BLOCK_DEFS = {
   'if-random':  { label: '🎲 Losowo jeden z:', cls: 'b-if', inputs: [{ key: 'options', placeholder: 'pies, kot, ryba' }] },
   'set-var':    { label: '📦 Ustaw zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }, { key: 'value', placeholder: 'Zosia' }] },
   'show-var':   { label: '👁 Pokaż zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }] },
+  'group':      { label: '📎 Grupa', cls: 'b-group', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
   'debug-stop': { label: '🛑 Zatrzymaj (debug)', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
 };
 
@@ -803,7 +849,8 @@ function closeTextPopup() {
 }
 function saveTextPopup() {
   if (textPopupTarget) {
-    blocks[textPopupTarget.idx].vals[textPopupTarget.key] = document.getElementById('textPopupArea').value;
+    const b = textPopupTarget.path ? getBlockByPath(textPopupTarget.path) : blocks[textPopupTarget.idx];
+    if (b) b.vals[textPopupTarget.key] = document.getElementById('textPopupArea').value;
     renderBlocks();
   }
   closeTextPopup();
@@ -830,11 +877,13 @@ function onDrop(e) {
 }
 
 // ── BUILD BLOCK ──
-function addBlock(type, vals = {}) {
+function addBlock(type, vals = {}, targetArray = null) {
   const def = BLOCK_DEFS[type];
   if (!def) return;
   const id = ++blockCounter;
-  blocks.push({ id, type, vals: { ...vals } });
+  const block = { id, type, vals: { ...vals } };
+  if (def.isGroup) block.children = [];
+  (targetArray || blocks).push(block);
   renderBlocks();
 }
 
@@ -844,52 +893,186 @@ function renderBlocks() {
   hint.style.display = blocks.length ? 'none' : '';
 
   stack.innerHTML = '';
-  blocks.forEach((b, idx) => {
+  renderBlockList(blocks, stack, null);
+}
+
+function renderBlockList(blkArray, container, parentPath) {
+  blkArray.forEach((b, idx) => {
     const def = BLOCK_DEFS[b.type];
+    const path = parentPath ? `${parentPath}.${idx}` : `${idx}`;
 
-    const el = document.createElement('div');
-    el.className = `block ${def.cls}${b.disabled ? ' disabled' : ''}`;
-    el.dataset.idx = idx;
+    if (def.isGroup) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'block-group';
 
-    let html = `<span style="pointer-events:none">${def.label}</span>`;
-    def.inputs.forEach(inp => {
-      const val = b.vals[inp.key] || '';
-      html += ` <input class="block-input" data-idx="${idx}" data-key="${inp.key}"
-                  value="${escHtml(val)}" placeholder="${inp.placeholder}"
-                  onclick="event.stopPropagation()"
-                  oninput="updateVal(${idx},'${inp.key}',this.value)">`;
-      html += `<button class="block-expand" onclick="event.stopPropagation();openTextPopup(${idx},'${inp.key}','${escHtml(def.label)} ${escHtml(inp.placeholder)}')" title="Rozwiń">⤢</button>`;
-    });
-    if (def.suffix) html += ` <span style="pointer-events:none">${def.suffix}</span>`;
-    if (b.type === 'debug-stop') {
-      html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlock(${idx})" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
-    }
-    html += `<button class="block-delete" onclick="deleteBlock(${idx})" title="Usuń blok">✕</button>`;
-    el.innerHTML = html;
+      // header
+      const header = document.createElement('div');
+      header.className = 'block-group-header';
+      let hhtml = `<span>📎 Grupa:</span>`;
+      hhtml += ` <input class="block-input" value="${escHtml(b.vals.name || '')}" placeholder="moja grupa"
+                   onclick="event.stopPropagation()"
+                   oninput="updateValByPath('${path}','name',this.value)">`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń grupę" style="margin-left:auto">✕</button>`;
+      header.innerHTML = hhtml;
+      header.draggable = true;
+      header.addEventListener('dragstart', ev => {
+        dragSrc = path;
+        ev.dataTransfer.setData('block-path', path);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+      wrapper.appendChild(header);
 
-    // drag to reorder
-    el.draggable = true;
-    el.addEventListener('dragstart', ev => {
-      dragSrc = idx;
-      ev.dataTransfer.effectAllowed = 'move';
-    });
-    el.addEventListener('dragover', ev => {
-      ev.preventDefault();
-      ev.dataTransfer.dropEffect = 'move';
-    });
-    el.addEventListener('drop', ev => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      if (dragSrc !== null && dragSrc !== idx) {
-        const moved = blocks.splice(dragSrc, 1)[0];
-        blocks.splice(idx, 0, moved);
-        renderBlocks();
-        dragSrc = null;
+      // body
+      const body = document.createElement('div');
+      body.className = 'block-group-body';
+      body.dataset.path = path;
+
+      if (b.children.length === 0) {
+        body.innerHTML = '<div class="block-group-hint">Przeciągnij bloki tutaj</div>';
+      } else {
+        renderBlockList(b.children, body, path);
       }
-    });
 
-    stack.appendChild(el);
+      // drop into group
+      body.addEventListener('dragover', ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        ev.dataTransfer.dropEffect = 'copy';
+        body.classList.add('drag-over');
+      });
+      body.addEventListener('dragleave', ev => {
+        body.classList.remove('drag-over');
+      });
+      body.addEventListener('drop', ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        body.classList.remove('drag-over');
+        const type = ev.dataTransfer.getData('block-type');
+        if (type) {
+          // drop from palette
+          const newDef = BLOCK_DEFS[type];
+          if (!newDef) return;
+          const newBlock = { id: ++blockCounter, type, vals: {} };
+          if (newDef.isGroup) newBlock.children = [];
+          b.children.push(newBlock);
+          renderBlocks();
+          return;
+        }
+        // reorder from canvas
+        if (dragSrc !== null) {
+          const moved = removeByPath(String(dragSrc));
+          if (moved) {
+            b.children.push(moved);
+            renderBlocks();
+          }
+          dragSrc = null;
+        }
+      });
+
+      wrapper.appendChild(body);
+      container.appendChild(wrapper);
+    } else {
+      const el = document.createElement('div');
+      el.className = `block ${def.cls}${b.disabled ? ' disabled' : ''}`;
+      el.dataset.path = path;
+
+      let html = `<span style="pointer-events:none">${def.label}</span>`;
+      def.inputs.forEach(inp => {
+        const val = b.vals[inp.key] || '';
+        html += ` <input class="block-input"
+                    value="${escHtml(val)}" placeholder="${inp.placeholder}"
+                    onclick="event.stopPropagation()"
+                    oninput="updateValByPath('${path}','${inp.key}',this.value)">`;
+        html += `<button class="block-expand" onclick="event.stopPropagation();openTextPopupByPath('${path}','${inp.key}','${escHtml(def.label)} ${escHtml(inp.placeholder)}')" title="Rozwiń">⤢</button>`;
+      });
+      if (def.suffix) html += ` <span style="pointer-events:none">${def.suffix}</span>`;
+      if (b.type === 'debug-stop') {
+        html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlockByPath('${path}')" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
+      }
+      html += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok">✕</button>`;
+      el.innerHTML = html;
+
+      el.draggable = true;
+      el.addEventListener('dragstart', ev => {
+        dragSrc = path;
+        ev.dataTransfer.setData('block-path', path);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+      el.addEventListener('dragover', ev => {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+      });
+      el.addEventListener('drop', ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const type = ev.dataTransfer.getData('block-type');
+        if (type) return; // palette drop handled by canvas
+        if (dragSrc !== null && String(dragSrc) !== path) {
+          const srcArr = getArrayAndIndex(String(dragSrc));
+          const dstArr = getArrayAndIndex(path);
+          if (srcArr && dstArr) {
+            const moved = srcArr.arr.splice(srcArr.idx, 1)[0];
+            const newDst = getArrayAndIndex(path); // re-resolve after splice
+            if (newDst) newDst.arr.splice(newDst.idx, 0, moved);
+            else blocks.push(moved);
+            renderBlocks();
+          }
+          dragSrc = null;
+        }
+      });
+
+      container.appendChild(el);
+    }
   });
+}
+
+// ── PATH HELPERS ──
+function getArrayAndIndex(path) {
+  const parts = path.split('.').map(Number);
+  let arr = blocks;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const b = arr[parts[i]];
+    if (!b || !b.children) return null;
+    arr = b.children;
+  }
+  return { arr, idx: parts[parts.length - 1] };
+}
+
+function getBlockByPath(path) {
+  const r = getArrayAndIndex(path);
+  return r ? r.arr[r.idx] : null;
+}
+
+function removeByPath(path) {
+  const r = getArrayAndIndex(path);
+  if (!r) return null;
+  return r.arr.splice(r.idx, 1)[0];
+}
+
+function deleteByPath(path) {
+  removeByPath(path);
+  renderBlocks();
+}
+
+function updateValByPath(path, key, val) {
+  const b = getBlockByPath(path);
+  if (b) b.vals[key] = val;
+}
+
+function toggleBlockByPath(path) {
+  const b = getBlockByPath(path);
+  if (b) b.disabled = !b.disabled;
+  renderBlocks();
+}
+
+function openTextPopupByPath(path, key, label) {
+  const b = getBlockByPath(path);
+  if (!b) return;
+  textPopupTarget = { path, key };
+  document.getElementById('textPopupTitle').textContent = label;
+  document.getElementById('textPopupArea').value = b.vals[key] || '';
+  document.getElementById('textPopup').style.display = '';
+  document.getElementById('textPopupArea').focus();
 }
 
 function updateVal(idx, key, val) {
@@ -1058,13 +1241,28 @@ async function executeBlocks(blks, startIdx) {
         const times = parseInt(vals.times) || 3;
         const nextIdx = i + 1;
         if (nextIdx < blks.length) {
-          clog(`  🔁 powtarzam ${times}x blok: ${BLOCK_DEFS[blks[nextIdx].type]?.label || ''}`);
+          const nextBlock = blks[nextIdx];
+          const nextLabel = nextBlock.type === 'group' ? `grupa "${nextBlock.vals.name || ''}"` : (BLOCK_DEFS[nextBlock.type]?.label || '');
+          clog(`  🔁 powtarzam ${times}x: ${nextLabel}`);
           for (let r = 0; r < times; r++) {
             if (debugStopped) return;
             clog(`  iteracja ${r + 1}/${times}`);
-            await executeBlocks([blks[nextIdx]], 0);
+            if (nextBlock.type === 'group' && nextBlock.children) {
+              await executeBlocks(nextBlock.children, 0);
+            } else {
+              await executeBlocks([nextBlock], 0);
+            }
           }
           i++;
+        }
+        break;
+      }
+
+      case 'group': {
+        const name = vals.name || 'grupa';
+        clog(`  📎 wchodzę do grupy: "${name}" (${b.children?.length || 0} bloków)`);
+        if (b.children && b.children.length > 0) {
+          await executeBlocks(b.children, 0);
         }
         break;
       }
@@ -1262,10 +1460,18 @@ const EXAMPLES = {
   ],
 };
 
+function cloneBlocks(arr) {
+  return arr.map(b => {
+    const clone = { id: ++blockCounter, type: b.type, vals: { ...b.vals } };
+    if (b.children) clone.children = cloneBlocks(b.children);
+    return clone;
+  });
+}
+
 function loadExample(name) {
   const example = EXAMPLES[name];
   if (!example) return;
-  blocks = example.map((b, i) => ({ id: ++blockCounter, type: b.type, vals: { ...b.vals } }));
+  blocks = cloneBlocks(example);
   renderBlocks();
 }
 
