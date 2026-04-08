@@ -1014,7 +1014,7 @@ function initNewBlock(type) {
   return block;
 }
 
-function setupDropZone(el, targetArr, path) {
+function setupDropZone(el, targetArr, path, singleSlot) {
   el.addEventListener('dragover', ev => {
     ev.preventDefault();
     ev.stopPropagation();
@@ -1029,13 +1029,19 @@ function setupDropZone(el, targetArr, path) {
     const type = ev.dataTransfer.getData('block-type');
     if (type) {
       const newBlock = initNewBlock(type);
-      if (newBlock) targetArr.push(newBlock);
+      if (newBlock) {
+        if (singleSlot) { targetArr.length = 0; }
+        targetArr.push(newBlock);
+      }
       renderBlocks();
       return;
     }
     if (dragSrc !== null) {
       const moved = removeByPath(String(dragSrc));
-      if (moved) targetArr.push(moved);
+      if (moved) {
+        if (singleSlot) { targetArr.length = 0; }
+        targetArr.push(moved);
+      }
       renderBlocks();
       dragSrc = null;
     }
@@ -1128,11 +1134,11 @@ function renderBlockList(blkArray, container, parentPath) {
       thenBody.dataset.path = path;
       thenBody.dataset.branch = 'then';
       if (b.children.length === 0) {
-        thenBody.innerHTML = '<div class="block-group-hint">Bloki gdy PRAWDA</div>';
+        thenBody.innerHTML = '<div class="block-group-hint">Upuść blok lub grupę</div>';
       } else {
         renderBlockList(b.children, thenBody, path + '.then');
       }
-      setupDropZone(thenBody, b.children, path);
+      setupDropZone(thenBody, b.children, path, true);
       wrapper.appendChild(thenBody);
 
       // ELSE body
@@ -1146,11 +1152,11 @@ function renderBlockList(blkArray, container, parentPath) {
       elseBody.dataset.path = path;
       elseBody.dataset.branch = 'else';
       if (b.elseChildren.length === 0) {
-        elseBody.innerHTML = '<div class="block-group-hint">Bloki gdy FAŁSZ (opcjonalne)</div>';
+        elseBody.innerHTML = '<div class="block-group-hint">Upuść blok lub grupę (opcjonalne)</div>';
       } else {
         renderBlockList(b.elseChildren, elseBody, path + '.else');
       }
-      setupDropZone(elseBody, b.elseChildren, path);
+      setupDropZone(elseBody, b.elseChildren, path, true);
       wrapper.appendChild(elseBody);
 
       container.appendChild(wrapper);
