@@ -220,6 +220,7 @@
     font-weight: 700;
     font-size: 13px;
     min-width: 80px;
+    max-width: 180px;
     outline: none;
     cursor: text;
   }
@@ -238,6 +239,71 @@
     transition: color .12s, background .12s;
   }
   .block-delete:hover { color: var(--accent1); background: #ff6b6b20; }
+
+  .block-expand {
+    background: none;
+    border: none;
+    color: #ffffff44;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color .12s;
+    flex-shrink: 0;
+  }
+  .block-expand:hover { color: #ffffffaa; }
+
+  /* ── TEXT POPUP ── */
+  .text-popup-overlay {
+    position: fixed; inset: 0;
+    background: #00000088;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(6px);
+  }
+  .text-popup {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    padding: 24px;
+    width: 460px;
+    max-width: 95vw;
+  }
+  .text-popup h3 { font-size: 15px; font-weight: 800; margin-bottom: 12px; }
+  .text-popup textarea {
+    width: 100%;
+    height: 120px;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    color: var(--text);
+    font-family: 'Nunito', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    outline: none;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  .text-popup textarea:focus { border-color: var(--accent5); }
+  .text-popup-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+    justify-content: flex-end;
+  }
+  .text-popup-actions button {
+    padding: 9px 20px;
+    border-radius: 10px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 14px;
+    cursor: pointer;
+    border: none;
+  }
+  .text-popup-actions .tp-save { background: var(--accent5); color: #0f0e17; }
+  .text-popup-actions .tp-cancel { background: var(--surface); color: var(--muted); border: 2px solid var(--border); }
 
   /* connector notch */
   .block::before {
@@ -431,6 +497,18 @@
   </div>
 </div>
 
+<!-- TEXT POPUP -->
+<div class="text-popup-overlay" id="textPopup" style="display:none" onclick="if(event.target===this)closeTextPopup()">
+  <div class="text-popup">
+    <h3 id="textPopupTitle">Edytuj tekst</h3>
+    <textarea id="textPopupArea"></textarea>
+    <div class="text-popup-actions">
+      <button class="tp-cancel" onclick="closeTextPopup()">Anuluj</button>
+      <button class="tp-save" onclick="saveTextPopup()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <header>
   <div class="logo"><span>AI</span> <em>Scratch</em> 🤖</div>
@@ -594,6 +672,27 @@ function toggleAiBlocks(show) {
   });
 }
 
+// ── TEXT POPUP ──
+let textPopupTarget = null;
+function openTextPopup(idx, key, label) {
+  textPopupTarget = { idx, key };
+  document.getElementById('textPopupTitle').textContent = label;
+  document.getElementById('textPopupArea').value = blocks[idx].vals[key] || '';
+  document.getElementById('textPopup').style.display = '';
+  document.getElementById('textPopupArea').focus();
+}
+function closeTextPopup() {
+  document.getElementById('textPopup').style.display = 'none';
+  textPopupTarget = null;
+}
+function saveTextPopup() {
+  if (textPopupTarget) {
+    blocks[textPopupTarget.idx].vals[textPopupTarget.key] = document.getElementById('textPopupArea').value;
+    renderBlocks();
+  }
+  closeTextPopup();
+}
+
 // ── DRAG FROM PALETTE ──
 document.querySelectorAll('.block-template').forEach(el => {
   el.addEventListener('dragstart', e => {
@@ -639,10 +738,11 @@ function renderBlocks() {
     let html = `<span style="pointer-events:none">${def.label}</span>`;
     def.inputs.forEach(inp => {
       const val = b.vals[inp.key] || '';
-      html += ` <input class="block-input" data-idx="${idx}" data-key="${inp.key}" 
-                  value="${escHtml(val)}" placeholder="${inp.placeholder}" 
+      html += ` <input class="block-input" data-idx="${idx}" data-key="${inp.key}"
+                  value="${escHtml(val)}" placeholder="${inp.placeholder}"
                   onclick="event.stopPropagation()"
                   oninput="updateVal(${idx},'${inp.key}',this.value)">`;
+      html += `<button class="block-expand" onclick="event.stopPropagation();openTextPopup(${idx},'${inp.key}','${escHtml(def.label)} ${escHtml(inp.placeholder)}')" title="Rozwiń">⤢</button>`;
     });
     if (def.suffix) html += ` <span style="pointer-events:none">${def.suffix}</span>`;
     html += `<button class="block-delete" onclick="deleteBlock(${idx})" title="Usuń blok">✕</button>`;
