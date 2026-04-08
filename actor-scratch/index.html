@@ -902,7 +902,6 @@ function initMarioProject() {
     { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.grounded) === 1 ? 0 : stan.vy' } },
     { type: 'on_msg', fields: { msg: 'move_right' } },
     { type: 'state_set', fields: { key: 'x', val: 'Number(stan.x) + 3' } },
-    { type: 'send_msg', fields: { to: 'Score', msg: 'step', data: '', color: '#88aaff' } },
     { type: 'on_msg', fields: { msg: 'move_left' } },
     { type: 'state_set', fields: { key: 'x', val: 'Math.max(0, Number(stan.x) - 3)' } },
     { type: 'on_msg', fields: { msg: 'jump' } },
@@ -915,47 +914,50 @@ function initMarioProject() {
 
   // Score — tracks points and coins
   const score = createActor('worker', 'Score', '⭐', supWorld.id, 60, 440);
-  score.state = { points: '0', coins: '0', steps: '0' };
+  score.state = { points: '0', coins: '0' };
   score.blocks = [
     { type: 'on_msg', fields: { msg: 'coin' } },
     { type: 'state_set', fields: { key: 'coins', val: 'Number(stan.coins) + 1' } },
-    { type: 'state_set', fields: { key: 'points', val: 'Number(stan.points) + 100' } },
-    { type: 'on_msg', fields: { msg: 'step' } },
-    { type: 'state_set', fields: { key: 'steps', val: 'Number(stan.steps) + 1' } },
-    { type: 'state_set', fields: { key: 'points', val: 'Number(stan.points) + 10' } },
+    { type: 'state_set', fields: { key: 'points', val: 'Number(stan.points) + 200' } },
     { type: 'on_msg', fields: { msg: 'damage' } },
-    { type: 'state_set', fields: { key: 'points', val: 'Math.max(0, Number(stan.points) - 50)' } },
+    { type: 'state_set', fields: { key: 'points', val: 'Math.max(0, Number(stan.points) - 10)' } },
   ];
 
-  // Coin — floats, sends 'coin' to Score randomly
-  const coin = createActor('worker', 'Coin', '🪙', supWorld.id, 180, 440);
-  coin.state = { x: '350', y: '260', collected: '0', bobPhase: '0' };
-  coin.blocks = [
-    { type: 'on_msg', fields: { msg: 'tick' } },
-    { type: 'state_set', fields: { key: 'bobPhase', val: 'Number(stan.bobPhase) + 0.3' } },
-    { type: 'state_set', fields: { key: 'y', val: '260 + Math.sin(Number(stan.bobPhase)) * 8' } },
-    { type: 'state_set', fields: { key: 'collected', val: 'Math.random() < 0.15 ? Number(stan.collected) + 1 : stan.collected' } },
-    { type: 'send_msg', fields: { to: 'Score', msg: 'coin', data: '', color: '#ffdd00' } },
-  ];
+  // Helper: distance to Mario expression
+  function getMarioDist() {
+    return `(function(){ var m = Object.values(S.actors).find(a=>a.name==="Mario"); if(!m) return 999; var dx=Number(m.state.x)-Number(stan.x), dy=Number(m.state.y)-Number(stan.y); return Math.round(Math.sqrt(dx*dx+dy*dy)); })()`;
+  }
 
-  // Coin2
-  const coin2 = createActor('worker', 'Coin_2', '🪙', supWorld.id, 200, 440);
-  coin2.state = { x: '500', y: '240', bobPhase: '1' };
-  coin2.blocks = [
-    { type: 'on_msg', fields: { msg: 'tick' } },
-    { type: 'state_set', fields: { key: 'bobPhase', val: 'Number(stan.bobPhase) + 0.3' } },
-    { type: 'state_set', fields: { key: 'y', val: '240 + Math.sin(Number(stan.bobPhase)) * 8' } },
-  ];
+  // Helper: create coin actor at position
+  function makeCoin(name, cx, cy, sceneX, sceneY) {
+    const c = createActor('worker', name, '🪙', supWorld.id, sceneX, sceneY);
+    c.state = { x: String(cx), y: String(cy), baseY: String(cy), bobPhase: String(Math.random() * 6), alive: '1' };
+    c.blocks = [
+      { type: 'on_msg', fields: { msg: 'tick' } },
+      { type: 'state_set', fields: { key: 'bobPhase', val: 'Number(stan.bobPhase) + 0.2' } },
+      { type: 'state_set', fields: { key: 'y', val: 'Number(stan.baseY) + Math.sin(Number(stan.bobPhase)) * 6' } },
+      { type: 'state_set', fields: { key: 'dist', val: getMarioDist() } },
+      { type: 'if_msg', fields: { cond: 'Number(stan.dist) < 40' } },
+      { type: 'send_msg', fields: { to: 'Score', msg: 'coin', data: '', color: '#ffdd00' } },
+      { type: 'self_stop', fields: {} },
+    ];
+    return c;
+  }
+
+  const coin1 = makeCoin('Coin_1', 250, 265, 180, 440);
+  const coin2 = makeCoin('Coin_2', 400, 245, 220, 440);
+  const coin3 = makeCoin('Coin_3', 550, 260, 260, 440);
 
   // Goomba — patrols left/right, sends 'hit' to Mario
   const goomba = createActor('worker', 'Goomba', '🍄', supEnem.id, 540, 240);
-  goomba.state = { x: '400', y: '300', dir: '-1', attacks: '0' };
+  goomba.state = { x: '400', y: '300', dir: '-1', dist: '999' };
   goomba.blocks = [
     { type: 'on_msg', fields: { msg: 'tick' } },
     { type: 'state_set', fields: { key: 'x', val: 'Number(stan.x) + Number(stan.dir)' } },
     { type: 'state_set', fields: { key: 'dir', val: 'Number(stan.x) < 300 ? 1 : Number(stan.x) > 500 ? -1 : stan.dir' } },
-    { type: 'send_msg', fields: { to: 'Mario', msg: 'hit', data: '10', color: '#ff4444' } },
-    { type: 'state_set', fields: { key: 'attacks', val: 'Number(stan.attacks) + 1' } },
+    { type: 'state_set', fields: { key: 'dist', val: getMarioDist() } },
+    { type: 'if_msg', fields: { cond: 'Number(stan.dist) < 35' } },
+    { type: 'send_msg', fields: { to: 'Mario', msg: 'hit', data: '', color: '#ff4444' } },
   ];
 
   // Koopa — slower patrol, wider range
@@ -1517,7 +1519,7 @@ function startRuntime() {
 
     // Process tick messages first (physics, enemies, etc.)
     workers.forEach(w => {
-      if (w.mailbox.length > 0) {
+      if (w.mailbox.length > 0 && w.status !== 'dead') {
         processActorMessages(w);
       }
     });
@@ -1527,7 +1529,7 @@ function startRuntime() {
 
     // Process any new messages from key actions
     workers.forEach(w => {
-      if (w.mailbox.length > 0) {
+      if (w.mailbox.length > 0 && w.status !== 'dead') {
         processActorMessages(w);
       }
     });
@@ -1631,6 +1633,14 @@ function executeAfterOnMsg(actor, triggerBlock) {
         .forEach((t, i) => setTimeout(() => deliverMsg(actor.id, t.id, b.fields.msg, '', msgColor), i * 60));
     }
 
+    if (b.type === 'if_msg') {
+      const cond = b.fields.cond || 'true';
+      try {
+        const resolved = cond.replace(/stan\.(\w+)/g, (_, k) => actor.state[k] || '0');
+        if (!eval(resolved)) break; // condition false → skip rest of handler
+      } catch { break; }
+    }
+
     if (b.type === 'self_stop') {
       actor.status = 'dead';
       const bodyEl = document.getElementById('body-' + actor.id);
@@ -1727,6 +1737,7 @@ function renderGameView() {
   Object.values(S.actors).forEach(a => {
     if (a.state.x === undefined || a.state.y === undefined) return;
     if (a.type === 'supervisor' || a.type === 'root') return;
+    if (a.status === 'dead') return;
     const x = Number(a.state.x);
     const y = Number(a.state.y);
     if (isNaN(x) || isNaN(y)) return;
