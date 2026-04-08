@@ -1,6 +1,6 @@
 let apiKey = '';
 let blocks = [];
-let variables = {};
+let variables = Object.create(null);
 let dragSrc = null;
 let blockCounter = 0;
 let currentExample = null; // { name, vIdx }
@@ -27,6 +27,8 @@ const BLOCK_DEFS = {
   'if-else':    { label: '❓ Jeżeli', cls: 'b-if-else', inputs: [], isIfElse: true },
   'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
   'goto':       { label: '↩ Idź do:', cls: 'b-repeat', inputs: [], isGoto: true },
+  'list-new':   { label: '📋 Nowa lista:', cls: 'b-list', inputs: [{ key: 'name', placeholder: 'kolory' }, { key: 'values', placeholder: 'czerwony, niebieski, zielony' }] },
+  'list-add':   { label: '➕ Dodaj do:', cls: 'b-list', inputs: [{ key: 'name', placeholder: 'kolory' }, { key: 'value', placeholder: 'czerwony' }] },
 };
 
 // ── API KEY ──
@@ -55,6 +57,63 @@ function toggleAiBlocks(show) {
     if (h.textContent.includes('AI')) h.style.display = show ? '' : 'none';
   });
 }
+
+// ── SAFE VARIABLE SYSTEM ──
+function getVar(path) {
+  const parts = String(path).split('.');
+  let cur = variables;
+  for (const key of parts) {
+    if (cur == null || typeof cur !== 'object') return undefined;
+    if (!Object.prototype.hasOwnProperty.call(cur, key)) return undefined;
+    cur = cur[key];
+  }
+  return cur;
+}
+
+function setVar(path, value) {
+  const parts = String(path).split('.');
+  let cur = variables;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    if (!Object.prototype.hasOwnProperty.call(cur, key) || cur[key] == null || typeof cur[key] !== 'object') {
+      cur[key] = Object.create(null);
+    }
+    cur = cur[key];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+function formatVar(val) {
+  if (val == null) return 'undefined';
+  if (Array.isArray(val)) return '[' + val.map(v => formatVar(v)).join(', ') + ']';
+  if (typeof val === 'object') {
+    const entries = Object.keys(val).map(k => `${k}: ${formatVar(val[k])}`);
+    return '{' + entries.join(', ') + '}';
+  }
+  return String(val);
+}
+
+// built-in functions for interpolation: {nazwa(arg)}
+const BUILTIN_FNS = {
+  'długość':  v => Array.isArray(v) ? v.length : (typeof v === 'object' && v ? Object.keys(v).length : String(v).length),
+  'length':   v => Array.isArray(v) ? v.length : (typeof v === 'object' && v ? Object.keys(v).length : String(v).length),
+  'losowy':   v => Array.isArray(v) ? v[Math.floor(Math.random() * v.length)] : v,
+  'random':   v => Array.isArray(v) ? v[Math.floor(Math.random() * v.length)] : v,
+  'ostatni':  v => Array.isArray(v) ? v[v.length - 1] : v,
+  'last':     v => Array.isArray(v) ? v[v.length - 1] : v,
+  'pierwszy': v => Array.isArray(v) ? v[0] : v,
+  'first':    v => Array.isArray(v) ? v[0] : v,
+  'klucze':   v => (typeof v === 'object' && v) ? Object.keys(v).join(', ') : '',
+  'keys':     v => (typeof v === 'object' && v) ? Object.keys(v).join(', ') : '',
+  'odwróć':   v => Array.isArray(v) ? [...v].reverse().join(', ') : v,
+  'reverse':  v => Array.isArray(v) ? [...v].reverse().join(', ') : v,
+  'suma':     v => Array.isArray(v) ? v.reduce((a, b) => a + (Number(b) || 0), 0) : v,
+  'sum':      v => Array.isArray(v) ? v.reduce((a, b) => a + (Number(b) || 0), 0) : v,
+  'min':      v => Array.isArray(v) ? Math.min(...v.map(Number)) : v,
+  'max':      v => Array.isArray(v) ? Math.max(...v.map(Number)) : v,
+  'połącz':   v => Array.isArray(v) ? v.join(', ') : v,
+  'join':     v => Array.isArray(v) ? v.join(', ') : v,
+};
 
 // ── TABS ──
 function switchTab(tab) {
@@ -93,12 +152,24 @@ function updateVarsPanel() {
     body.innerHTML = '<div class="var-empty">Brak zmiennych — uruchom program.</div>';
     return;
   }
-  let html = '<table class="var-table"><tr><th>Nazwa</th><th>Wartość</th></tr>';
-  keys.forEach(k => {
-    const val = String(variables[k]);
-    const display = val.length > 60 ? val.slice(0, 60) + '...' : val;
-    html += `<tr><td>${escHtml(k)}</td><td>${escHtml(display)}</td></tr>`;
-  });
+  let html = '<table class="var-table"><tr><th>Nazwa</th><th>Typ</th><th>Wartość</th></tr>';
+  function addRows(obj, prefix) {
+    Object.keys(obj).forEach(k => {
+      const val = obj[k];
+      const fullName = prefix ? `${prefix}.${k}` : k;
+      if (Array.isArray(val)) {
+        html += `<tr><td>${escHtml(fullName)}</td><td>lista</td><td>${escHtml(formatVar(val))}</td></tr>`;
+      } else if (val != null && typeof val === 'object') {
+        html += `<tr><td>${escHtml(fullName)}</td><td>obiekt</td><td>${escHtml(formatVar(val))}</td></tr>`;
+        addRows(val, fullName);
+      } else {
+        const type = typeof val === 'number' ? 'liczba' : 'tekst';
+        const display = String(val).length > 60 ? String(val).slice(0, 60) + '...' : String(val);
+        html += `<tr><td>${escHtml(fullName)}</td><td>${type}</td><td>${escHtml(display)}</td></tr>`;
+      }
+    });
+  }
+  addRows(variables, '');
   html += '</table>';
   body.innerHTML = html;
 }
@@ -750,7 +821,7 @@ function clearCanvas() {
   drillDown = null;
   document.getElementById('branchBar').style.display = 'none';
   blocks = [];
-  variables = {};
+  variables = Object.create(null);
   debugStopped = false;
   currentExample = null;
   resumeDebug();
@@ -880,7 +951,7 @@ function findGroup(name, blks) {
 async function runScript() {
   document.getElementById('outputBody').innerHTML = '';
   document.getElementById('consoleBody').innerHTML = '';
-  variables = {};
+  variables = Object.create(null);
   debugStopped = false;
   gotoCount = 0;
   updateVarsPanel();
@@ -974,7 +1045,7 @@ async function executeBlocks(blks, startIdx) {
         clog(`  🙋 "${question}" → ${varName}`);
         switchTab('output');
         const answer = await logAsk(question);
-        variables[varName] = answer;
+        setVar(varName, answer);
         log(`${answer}`, 'ask-answer');
         clog(`  ✏️ ${varName} = "${answer}"`);
         updateVarsPanel();
@@ -1013,7 +1084,19 @@ async function executeBlocks(blks, startIdx) {
         const name = vals.name || 'grupa';
         clog(`  📎 wchodzę do grupy: "${name}" (${b.children?.length || 0} bloków)`);
         if (b.children && b.children.length > 0) {
-          await executeBlocks(b.children, 0);
+          let looping = true;
+          while (looping) {
+            try {
+              await executeBlocks(b.children, 0);
+              looping = false;
+            } catch (e) {
+              if (e instanceof GotoGroup && e.name === name) {
+                clog(`↩ Skok do grupy: "${name}"`);
+                continue;
+              }
+              throw e; // different group or GotoStart — propagate up
+            }
+          }
         }
         break;
       }
@@ -1048,16 +1131,16 @@ async function executeBlocks(blks, startIdx) {
         const opts = (vals.options || 'a, b').split(',').map(s => s.trim()).filter(Boolean);
         const chosen = opts[Math.floor(Math.random() * opts.length)];
         log(`🎲 Wylosowano: ${chosen}`, 'say');
-        variables['_random'] = chosen;
+        setVar('_random', chosen);
         clog(`  🎲 opcje: [${opts.join(', ')}] → "${chosen}"`);
         updateVarsPanel();
         break;
       }
 
       case 'set-var': {
-        const name = vals.name || 'x';
+        const name = interpolateVars(vals.name || 'x');
         const value = interpolateVars(vals.value || '');
-        variables[name] = value;
+        setVar(name, value);
         log(`📦 ${name} = "${value}"`, 'info');
         clog(`  📦 ${name} = "${value}"`);
         updateVarsPanel();
@@ -1065,24 +1148,24 @@ async function executeBlocks(blks, startIdx) {
       }
 
       case 'show-var': {
-        const name = vals.name || 'x';
-        const val = variables[name];
+        const name = interpolateVars(vals.name || 'x');
+        const val = getVar(name);
         if (val === undefined) {
           log(`Zmienna "${name}" nie istnieje!`, 'error');
           clog(`  ❌ zmienna "${name}" nie znaleziona`);
         } else {
-          log(`👁 ${name}: "${val}"`, 'say');
-          clog(`  👁 ${name} = "${val}"`);
+          log(`👁 ${name}: ${formatVar(val)}`, 'say');
+          clog(`  👁 ${name} = ${formatVar(val)}`);
         }
         break;
       }
 
       case 'change-var': {
-        const name = vals.name || 'x';
+        const name = interpolateVars(vals.name || 'x');
         const delta = evalMath(vals.delta || '1');
-        const current = Number(variables[name]) || 0;
+        const current = Number(getVar(name)) || 0;
         const result = current + delta;
-        variables[name] = result;
+        setVar(name, result);
         log(`➕ ${name}: ${current} + ${delta} = ${result}`, 'info');
         clog(`  ➕ ${name}: ${current} + ${delta} = ${result}`);
         updateVarsPanel();
@@ -1090,10 +1173,10 @@ async function executeBlocks(blks, startIdx) {
       }
 
       case 'math-set': {
-        const name = vals.name || 'wynik';
+        const name = interpolateVars(vals.name || 'wynik');
         const expr = vals.expr || '0';
         const result = evalMath(expr);
-        variables[name] = result;
+        setVar(name, result);
         log(`📐 ${name} = ${interpolateVars(expr)} = ${result}`, 'info');
         clog(`  📐 ${name} = ${expr} → ${result}`);
         updateVarsPanel();
@@ -1101,13 +1184,52 @@ async function executeBlocks(blks, startIdx) {
       }
 
       case 'random-num': {
-        const name = vals.name || 'liczba';
+        const name = interpolateVars(vals.name || 'liczba');
         const min = parseInt(interpolateVars(vals.min || '1')) || 1;
         const max = parseInt(interpolateVars(vals.max || '6')) || 6;
         const result = Math.floor(Math.random() * (max - min + 1)) + min;
-        variables[name] = result;
+        setVar(name, result);
         log(`🎯 ${name} = ${result} (${min}–${max})`, 'info');
         clog(`  🎯 losowa ${min}–${max} → ${result}`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'list-new': {
+        const name = interpolateVars(vals.name || 'lista');
+        const raw = vals.values || '';
+        const items = raw ? raw.split(',').map(s => interpolateVars(s.trim())).filter(Boolean) : [];
+        setVar(name, items);
+        log(`📋 ${name} = [${items.join(', ')}] (${items.length} el.)`, 'info');
+        clog(`  📋 nowa lista: ${name} → [${items.join(', ')}]`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'list-add': {
+        const name = interpolateVars(vals.name || 'lista');
+        const rawValue = (vals.value || '').trim();
+        let list = getVar(name);
+        if (!Array.isArray(list)) {
+          list = [];
+          setVar(name, list);
+        }
+        let value;
+        if (rawValue.startsWith('@')) {
+          // @ref — deep copy of object/array
+          const refPath = interpolateVars(rawValue.slice(1).trim());
+          const resolved = getVar(refPath);
+          if (resolved != null && typeof resolved === 'object') {
+            value = JSON.parse(JSON.stringify(resolved));
+          } else {
+            value = resolved !== undefined ? resolved : interpolateVars(rawValue);
+          }
+        } else {
+          value = interpolateVars(rawValue);
+        }
+        list.push(value);
+        log(`➕ ${name} ← ${formatVar(value)} (${list.length} el.)`, 'info');
+        clog(`  ➕ dodano ${formatVar(value)} do ${name}`);
         updateVarsPanel();
         break;
       }
@@ -1139,7 +1261,7 @@ async function executeBlocks(blks, startIdx) {
           const ans = await callAI(q);
           loader.remove();
           logAI(ans);
-          variables['_odpowiedź'] = ans;
+          setVar('_odpowiedź', ans);
           clog(`  → odpowiedź: ${ans.slice(0, 80)}...`);
           updateVarsPanel();
         } catch(e) {
@@ -1158,7 +1280,7 @@ async function executeBlocks(blks, startIdx) {
           const ans = await callAI(`Napisz krótką, ciekawą historyjkę dla dzieci o ${topic}. Maksymalnie 5 zdań.`);
           loader.remove();
           logAI(ans);
-          variables['_historia'] = ans;
+          setVar('_historia', ans);
           clog(`  → historia: ${ans.slice(0, 80)}...`);
           updateVarsPanel();
         } catch(e) {
@@ -1241,7 +1363,30 @@ async function executeBlocks(blks, startIdx) {
 }
 
 function interpolateVars(text) {
-  return text.replace(/\{([^}]+)\}/g, (m, name) => variables[name] !== undefined ? variables[name] : m);
+  // first pass: resolve nested refs like {drużyna.{i}} → {drużyna.0}
+  let result = text.replace(/\{([^{}]*)\{([^{}]+)\}([^{}]*)\}/g, (m, pre, inner, post) => {
+    const innerVal = getVar(inner.trim());
+    if (innerVal !== undefined) return `{${pre}${formatVar(innerVal)}${post}}`;
+    return m;
+  });
+  // second pass: resolve all expressions
+  return result.replace(/\{([^}]+)\}/g, (m, expr) => {
+    expr = expr.trim();
+    // function call: {długość(kolory)} or {losowy(lista)}
+    const fnMatch = expr.match(/^([\p{L}_][\p{L}\w]*)\((.+)\)$/u);
+    if (fnMatch) {
+      const fn = BUILTIN_FNS[fnMatch[1]];
+      if (fn) {
+        const val = getVar(fnMatch[2].trim());
+        if (val !== undefined) { const r = fn(val); return formatVar(r); }
+      }
+      return m;
+    }
+    // dot path: {gracz.hp} or simple: {imię}
+    const val = getVar(expr);
+    if (val !== undefined) return formatVar(val);
+    return m;
+  });
 }
 
 function evalMath(expr) {
@@ -1641,6 +1786,186 @@ const EXAMPLES = {
             ],
             elseChildren: [
               { type: 'say', vals: { text: '✅ Gotowe!' } },
+            ],
+          },
+        ]},
+        { type: 'end', vals: {} },
+      ]},
+    ],
+  },
+  objectsDemo: {
+    icon: '🏗', title: 'Obiekty i listy', desc: 'Obiekt gracza, lista kolorów i metody!',
+    versions: [
+      { label: 'obiekt gracza', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: '🏗 Tworzę obiekt gracza!' } },
+        { type: 'set-var', vals: { name: 'gracz.imię', value: 'Zosia' } },
+        { type: 'set-var', vals: { name: 'gracz.hp', value: '100' } },
+        { type: 'set-var', vals: { name: 'gracz.atak', value: '15' } },
+        { type: 'say', vals: { text: '{gracz.imię}: HP={gracz.hp}, atak={gracz.atak}' } },
+        { type: 'change-var', vals: { name: 'gracz.hp', delta: '-20' } },
+        { type: 'say', vals: { text: '💥 Trafienie! HP spadło do {gracz.hp}' } },
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'lista + metody', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'list-new', vals: { name: 'kolory', values: 'czerwony, niebieski, zielony, żółty' } },
+        { type: 'say', vals: { text: 'Kolory: {połącz(kolory)}' } },
+        { type: 'say', vals: { text: 'Ile: {długość(kolory)}' } },
+        { type: 'say', vals: { text: 'Pierwszy: {pierwszy(kolory)}' } },
+        { type: 'say', vals: { text: 'Ostatni: {ostatni(kolory)}' } },
+        { type: 'say', vals: { text: 'Losowy: {losowy(kolory)}' } },
+        { type: 'say', vals: { text: 'Element 0: {kolory.0}' } },
+        { type: 'say', vals: { text: 'Element 2: {kolory.2}' } },
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'drużyna RPG', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: '⚔️ Budujemy drużynę!' } },
+        { type: 'set-var', vals: { name: 'wojownik.imię', value: 'Kuba' } },
+        { type: 'set-var', vals: { name: 'wojownik.klasa', value: 'rycerz' } },
+        { type: 'set-var', vals: { name: 'wojownik.hp', value: '120' } },
+        { type: 'set-var', vals: { name: 'mag.imię', value: 'Ola' } },
+        { type: 'set-var', vals: { name: 'mag.klasa', value: 'czarodziej' } },
+        { type: 'set-var', vals: { name: 'mag.hp', value: '60' } },
+        { type: 'say', vals: { text: '🛡 {wojownik.imię} ({wojownik.klasa}) — HP: {wojownik.hp}' } },
+        { type: 'say', vals: { text: '🔮 {mag.imię} ({mag.klasa}) — HP: {mag.hp}' } },
+        { type: 'list-new', vals: { name: 'drużyna' } },
+        { type: 'list-add', vals: { name: 'drużyna', value: '{wojownik.imię}' } },
+        { type: 'list-add', vals: { name: 'drużyna', value: '{mag.imię}' } },
+        { type: 'say', vals: { text: 'Drużyna: {połącz(drużyna)} ({długość(drużyna)} os.)' } },
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'pętla po liście', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'list-new', vals: { name: 'drużyna', values: 'Kuba, Ola, Janek, Maja' } },
+        { type: 'say', vals: { text: '📋 Drużyna: {połącz(drużyna)}' } },
+        { type: 'say', vals: { text: '👥 Członków: {długość(drużyna)}' } },
+        { type: 'set-var', vals: { name: 'i', value: '0' } },
+        { type: 'math-set', vals: { name: 'ile', expr: '{długość(drużyna)}' } },
+        { type: 'group', vals: { name: 'pokaż' }, children: [
+          { type: 'say', vals: { text: '👤 Nr {i}: {drużyna.{i}}' } },
+          { type: 'change-var', vals: { name: 'i', delta: '1' } },
+          { type: 'wait', vals: { secs: '0.3' } },
+          { type: 'if-else', vals: { left: '{i}', op: '<', right: '{ile}' },
+            children: [
+              { type: 'goto', vals: { target: 'pokaż' } },
+            ],
+            elseChildren: [
+              { type: 'say', vals: { text: '✅ Pokazano wszystkich!' } },
+            ],
+          },
+        ]},
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'obiekty w pętli', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: '⚔️ Tworzymy drużynę RPG!' } },
+        { type: 'set-var', vals: { name: 'drużyna.0.imię', value: 'Kuba' } },
+        { type: 'set-var', vals: { name: 'drużyna.0.klasa', value: '🛡 rycerz' } },
+        { type: 'set-var', vals: { name: 'drużyna.0.hp', value: '120' } },
+        { type: 'set-var', vals: { name: 'drużyna.1.imię', value: 'Ola' } },
+        { type: 'set-var', vals: { name: 'drużyna.1.klasa', value: '🔮 czarodziej' } },
+        { type: 'set-var', vals: { name: 'drużyna.1.hp', value: '60' } },
+        { type: 'set-var', vals: { name: 'drużyna.2.imię', value: 'Janek' } },
+        { type: 'set-var', vals: { name: 'drużyna.2.klasa', value: '🏹 łucznik' } },
+        { type: 'set-var', vals: { name: 'drużyna.2.hp', value: '80' } },
+        { type: 'set-var', vals: { name: 'ile', value: '3' } },
+        { type: 'set-var', vals: { name: 'i', value: '0' } },
+        { type: 'group', vals: { name: 'pokaż' }, children: [
+          { type: 'say', vals: { text: '{drużyna.{i}.klasa} {drużyna.{i}.imię} — HP: {drużyna.{i}.hp}' } },
+          { type: 'change-var', vals: { name: 'i', delta: '1' } },
+          { type: 'wait', vals: { secs: '0.5' } },
+          { type: 'if-else', vals: { left: '{i}', op: '<', right: '{ile}' },
+            children: [
+              { type: 'goto', vals: { target: 'pokaż' } },
+            ],
+            elseChildren: [
+              { type: 'say', vals: { text: '✅ Drużyna gotowa! ({ile} postaci)' } },
+            ],
+          },
+        ]},
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'generator drużyny', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: '⚔️ Generator drużyny RPG!' } },
+        { type: 'list-new', vals: { name: 'imiona', values: 'Kuba, Ola, Janek, Maja, Tomek, Zosia' } },
+        { type: 'list-new', vals: { name: 'klasy', values: '🛡 rycerz, 🔮 czarodziej, 🏹 łucznik, 🗡 złodziej' } },
+        { type: 'list-new', vals: { name: 'bronie', values: '⚔️ miecz, 🪄 różdżka, 🏹 łuk, 🗡 sztylet, 🔨 młot' } },
+        { type: 'ask', vals: { text: 'Ilu członków drużyny? (1-6)', name: 'ile' } },
+        { type: 'set-var', vals: { name: 'i', value: '0' } },
+        { type: 'group', vals: { name: 'twórz' }, children: [
+          { type: 'set-var', vals: { name: 'gracz.{i}.imię', value: '{losowy(imiona)}' } },
+          { type: 'set-var', vals: { name: 'gracz.{i}.klasa', value: '{losowy(klasy)}' } },
+          { type: 'set-var', vals: { name: 'gracz.{i}.broń', value: '{losowy(bronie)}' } },
+          { type: 'random-num', vals: { name: 'gracz.{i}.hp', min: '50', max: '150' } },
+          { type: 'random-num', vals: { name: 'gracz.{i}.atak', min: '5', max: '25' } },
+          { type: 'say', vals: { text: '✨ Stworzono: {gracz.{i}.imię}!' } },
+          { type: 'change-var', vals: { name: 'i', delta: '1' } },
+          { type: 'wait', vals: { secs: '0.3' } },
+          { type: 'if-else', vals: { left: '{i}', op: '<', right: '{ile}' },
+            children: [
+              { type: 'goto', vals: { target: 'twórz' } },
+            ],
+            elseChildren: [],
+          },
+        ]},
+        { type: 'say', vals: { text: '📋 Drużyna ({ile} postaci):' } },
+        { type: 'set-var', vals: { name: 'i', value: '0' } },
+        { type: 'group', vals: { name: 'pokaż' }, children: [
+          { type: 'say', vals: { text: '{gracz.{i}.klasa} {gracz.{i}.imię} — HP:{gracz.{i}.hp} ATK:{gracz.{i}.atak} Broń:{gracz.{i}.broń}' } },
+          { type: 'change-var', vals: { name: 'i', delta: '1' } },
+          { type: 'wait', vals: { secs: '0.3' } },
+          { type: 'if-else', vals: { left: '{i}', op: '<', right: '{ile}' },
+            children: [
+              { type: 'goto', vals: { target: 'pokaż' } },
+            ],
+            elseChildren: [
+              { type: 'say', vals: { text: '⚔️ Gotowi do walki!' } },
+            ],
+          },
+        ]},
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'obiekty na liście', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: '⚔️ Kreator postaci!' } },
+        { type: 'list-new', vals: { name: 'imiona', values: 'Kuba, Ola, Janek, Maja, Tomek, Zosia' } },
+        { type: 'list-new', vals: { name: 'klasy', values: '🛡 rycerz, 🔮 mag, 🏹 łucznik, 🗡 złodziej' } },
+        { type: 'list-new', vals: { name: 'bronie', values: '⚔️ miecz, 🪄 różdżka, 🏹 łuk, 🗡 sztylet, 🔨 młot' } },
+        { type: 'list-new', vals: { name: 'drużyna' } },
+        { type: 'ask', vals: { text: 'Ile postaci stworzyć? (1-6)', name: 'ile' } },
+        { type: 'set-var', vals: { name: 'i', value: '0' } },
+        { type: 'group', vals: { name: 'twórz' }, children: [
+          { type: 'set-var', vals: { name: 'postać.imię', value: '{losowy(imiona)}' } },
+          { type: 'set-var', vals: { name: 'postać.klasa', value: '{losowy(klasy)}' } },
+          { type: 'set-var', vals: { name: 'postać.broń', value: '{losowy(bronie)}' } },
+          { type: 'random-num', vals: { name: 'postać.hp', min: '50', max: '150' } },
+          { type: 'random-num', vals: { name: 'postać.atak', min: '5', max: '25' } },
+          { type: 'list-add', vals: { name: 'drużyna', value: '@postać' } },
+          { type: 'say', vals: { text: '✨ #{i}: {postać.imię} ({postać.klasa})' } },
+          { type: 'change-var', vals: { name: 'i', delta: '1' } },
+          { type: 'wait', vals: { secs: '0.3' } },
+          { type: 'if-else', vals: { left: '{i}', op: '<', right: '{ile}' },
+            children: [
+              { type: 'goto', vals: { target: 'twórz' } },
+            ],
+            elseChildren: [],
+          },
+        ]},
+        { type: 'say', vals: { text: '📋 Drużyna ({długość(drużyna)} postaci):' } },
+        { type: 'set-var', vals: { name: 'i', value: '0' } },
+        { type: 'group', vals: { name: 'pokaż' }, children: [
+          { type: 'say', vals: { text: '{drużyna.{i}.klasa} {drużyna.{i}.imię} — HP:{drużyna.{i}.hp} ATK:{drużyna.{i}.atak} {drużyna.{i}.broń}' } },
+          { type: 'change-var', vals: { name: 'i', delta: '1' } },
+          { type: 'wait', vals: { secs: '0.3' } },
+          { type: 'if-else', vals: { left: '{i}', op: '<', right: '{długość(drużyna)}' },
+            children: [
+              { type: 'goto', vals: { target: 'pokaż' } },
+            ],
+            elseChildren: [
+              { type: 'say', vals: { text: '⚔️ Drużyna gotowa do walki!' } },
             ],
           },
         ]},

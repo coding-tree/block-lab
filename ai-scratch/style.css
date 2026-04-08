@@ -731,6 +731,7 @@
   .b-var      { background: #1f3a2d; color: #6bffb8; border-color: #6bcb77; }
   .b-sound    { background: #3a1f4a; color: #e0b3ff; border-color: #c77dff; }
   .b-math     { background: #1f3a3a; color: #66ddcc; border-color: #33bbaa; }
+  .b-list     { background: #2a3a1f; color: #b8e06b; border-color: #8bc34a; }
 
   /* ── SCROLLBAR ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
