@@ -1328,13 +1328,13 @@ function renderBlockList(blkArray, container, parentPath) {
       // header
       const header = document.createElement('div');
       header.className = 'block-group-header';
-      let hhtml = `<span>📎 Grupa:</span>`;
+      let hhtml = `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
+      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
+      hhtml += `<span>📎 Grupa:</span>`;
       hhtml += ` <input class="block-input" value="${escHtml(b.vals.name || '')}" placeholder="moja grupa"
                    onclick="event.stopPropagation()"
                    oninput="updateValByPath('${path}','name',this.value)">`;
-      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" style="margin-left:auto" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
-      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
-      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń grupę">✕</button>`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń grupę" style="margin-left:auto">✕</button>`;
       header.innerHTML = hhtml;
       header.draggable = true;
       header.addEventListener('dragstart', ev => {
@@ -1367,7 +1367,9 @@ function renderBlockList(blkArray, container, parentPath) {
       // header with condition inputs
       const header = document.createElement('div');
       header.className = 'block-if-else-header';
-      let hhtml = `<span>❓ Jeżeli</span>`;
+      let hhtml = `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
+      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
+      hhtml += `<span>❓ Jeżeli</span>`;
       hhtml += ` <input class="block-input" value="${escHtml(b.vals.left || '')}" placeholder="zmienna"
                    style="min-width:60px;max-width:120px"
                    onclick="event.stopPropagation()"
@@ -1383,9 +1385,7 @@ function renderBlockList(blkArray, container, parentPath) {
                    style="min-width:60px;max-width:120px"
                    onclick="event.stopPropagation()"
                    oninput="updateValByPath('${path}','right',this.value)">`;
-      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" style="margin-left:auto" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
-      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
-      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok">✕</button>`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok" style="margin-left:auto">✕</button>`;
       header.innerHTML = hhtml;
       header.draggable = true;
       header.addEventListener('dragstart', ev => {
@@ -1437,7 +1437,9 @@ function renderBlockList(blkArray, container, parentPath) {
       el.className = `block ${def.cls}${b.disabled ? ' disabled' : ''}`;
       el.dataset.path = path;
 
-      let html = `<span style="pointer-events:none">${def.label}</span>`;
+      let html = `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
+      html += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
+      html += `<span style="pointer-events:none">${def.label}</span>`;
       def.inputs.forEach(inp => {
         const val = b.vals[inp.key] || '';
         html += ` <input class="block-input"
@@ -1450,8 +1452,6 @@ function renderBlockList(blkArray, container, parentPath) {
       if (b.type === 'debug-stop') {
         html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlockByPath('${path}')" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
       }
-      html += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
-      html += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
       html += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok">✕</button>`;
       el.innerHTML = html;
 
