@@ -14,6 +14,7 @@ const BLOCK_DEFS = {
   'ai-translate':{ label: '🌍 Przetłumacz na angielski:', cls: 'b-ai', inputs: [{ key: 'text', placeholder: 'Cześć świecie' }] },
   'ai-poem':    { label: '🎵 Ułóż wiersz o:', cls: 'b-ai', inputs: [{ key: 'topic', placeholder: 'kosmosie' }] },
   'say':        { label: '💬 Powiedz:', cls: 'b-say', inputs: [{ key: 'text', placeholder: 'Witaj!' }] },
+  'ask':        { label: '🙋 Zapytaj:', cls: 'b-ask', inputs: [{ key: 'text', placeholder: 'Jak masz na imię?' }, { key: 'name', placeholder: 'odpowiedź' }] },
   'wait':       { label: '⏱ Czekaj:', cls: 'b-wait', inputs: [{ key: 'secs', placeholder: '1' }], suffix: 'sek' },
   'repeat':     { label: '🔁 Powtórz:', cls: 'b-repeat', inputs: [{ key: 'times', placeholder: '3' }], suffix: 'razy' },
   'if-random':  { label: '🎲 Losowo jeden z:', cls: 'b-if', inputs: [{ key: 'options', placeholder: 'pies, kot, ryba' }] },
@@ -772,7 +773,7 @@ function log(text, type = '') {
   const body = document.getElementById('outputBody');
   const el = document.createElement('div');
   el.className = `output-line ${type}`;
-  const labels = { ai: '🤖 AI', say: '💬 Skrypt', error: '❌ Błąd', info: 'ℹ️ Info', debug: '⏸ Pauza' };
+  const labels = { ai: '🤖 AI', say: '💬 Skrypt', ask: '🙋 Pytanie', 'ask-answer': '✏️ Odpowiedź', error: '❌ Błąd', info: 'ℹ️ Info', debug: '⏸ Pauza' };
   if (labels[type]) {
     el.innerHTML = `<div class="output-label">${labels[type]}</div>${escHtml(text)}`;
   } else {
@@ -780,6 +781,31 @@ function log(text, type = '') {
   }
   body.prepend(el);
   return el;
+}
+
+function logAsk(question) {
+  const body = document.getElementById('outputBody');
+  const el = document.createElement('div');
+  el.className = 'output-line ask';
+  el.innerHTML = `<div class="output-label">🙋 Pytanie</div>${escHtml(question)}
+    <div class="ask-input-row">
+      <input class="ask-input" type="text" placeholder="wpisz odpowiedź..." autofocus>
+      <button class="ask-submit">OK</button>
+    </div>`;
+  body.prepend(el);
+  const input = el.querySelector('.ask-input');
+  const btn = el.querySelector('.ask-submit');
+  input.focus();
+  return new Promise(resolve => {
+    function submit() {
+      const val = input.value.trim() || '';
+      el.querySelector('.ask-input-row').remove();
+      el.innerHTML = `<div class="output-label">🙋 Pytanie</div>${escHtml(question)}`;
+      resolve(val);
+    }
+    btn.addEventListener('click', submit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  });
 }
 
 function logAI(text) {
@@ -939,6 +965,19 @@ async function executeBlocks(blks, startIdx) {
         text = interpolateVars(text);
         log(text, 'say');
         clog(`  → "${text}"`);
+        break;
+      }
+
+      case 'ask': {
+        const question = interpolateVars(vals.text || 'Odpowiedz:');
+        const varName = vals.name || 'odpowiedź';
+        clog(`  🙋 "${question}" → ${varName}`);
+        switchTab('output');
+        const answer = await logAsk(question);
+        variables[varName] = answer;
+        log(`${answer}`, 'ask-answer');
+        clog(`  ✏️ ${varName} = "${answer}"`);
+        updateVarsPanel();
         break;
       }
 
@@ -1249,6 +1288,83 @@ function sleep(ms) {
 
 // ── EXAMPLES ──
 const EXAMPLES = {
+  askDemo: {
+    icon: '🙋', title: 'Zapytaj', desc: 'Pytaj użytkownika i używaj odpowiedzi!',
+    versions: [
+      { label: 'powitanie', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'ask', vals: { text: 'Jak masz na imię?', name: 'imię' } },
+        { type: 'say', vals: { text: 'Cześć {imię}! 👋' } },
+        { type: 'ask', vals: { text: 'Ile masz lat?', name: 'wiek' } },
+        { type: 'say', vals: { text: '{imię} ma {wiek} lat!' } },
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'quiz', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'punkty', value: '0' } },
+        { type: 'say', vals: { text: '🧠 Quiz! Odpowiedz na 3 pytania.' } },
+        { type: 'ask', vals: { text: 'Stolica Polski?', name: 'odp' } },
+        { type: 'if-else', vals: { left: '{odp}', op: '=', right: 'Warszawa' },
+          children: [
+            { type: 'say', vals: { text: '✅ Brawo!' } },
+            { type: 'change-var', vals: { name: 'punkty', delta: '1' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '❌ Nie! To Warszawa.' } },
+          ],
+        },
+        { type: 'ask', vals: { text: 'Ile nóg ma pająk?', name: 'odp' } },
+        { type: 'if-else', vals: { left: '{odp}', op: '=', right: '8' },
+          children: [
+            { type: 'say', vals: { text: '✅ Brawo!' } },
+            { type: 'change-var', vals: { name: 'punkty', delta: '1' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '❌ Nie! Pająk ma 8 nóg.' } },
+          ],
+        },
+        { type: 'ask', vals: { text: 'Największa planeta?', name: 'odp' } },
+        { type: 'if-else', vals: { left: '{odp}', op: '=', right: 'Jowisz' },
+          children: [
+            { type: 'say', vals: { text: '✅ Brawo!' } },
+            { type: 'change-var', vals: { name: 'punkty', delta: '1' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '❌ Nie! To Jowisz.' } },
+          ],
+        },
+        { type: 'say', vals: { text: '🏆 Wynik: {punkty}/3 punktów!' } },
+        { type: 'end', vals: {} },
+      ]},
+      { label: 'zgadywanka', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'random-num', vals: { name: 'sekret', min: '1', max: '10' } },
+        { type: 'say', vals: { text: '🎯 Zgadnij liczbę od 1 do 10!' } },
+        { type: 'set-var', vals: { name: 'próby', value: '0' } },
+        { type: 'group', vals: { name: 'zgaduj' }, children: [
+          { type: 'ask', vals: { text: 'Twój strzał?', name: 'strzał' } },
+          { type: 'change-var', vals: { name: 'próby', delta: '1' } },
+          { type: 'if-else', vals: { left: '{strzał}', op: '=', right: '{sekret}' },
+            children: [
+              { type: 'say', vals: { text: '🎉 Brawo! Zgadłeś w {próby} próbach!' } },
+            ],
+            elseChildren: [
+              { type: 'if-else', vals: { left: '{strzał}', op: '<', right: '{sekret}' },
+                children: [
+                  { type: 'say', vals: { text: '📈 Za mało! Spróbuj wyżej.' } },
+                ],
+                elseChildren: [
+                  { type: 'say', vals: { text: '📉 Za dużo! Spróbuj niżej.' } },
+                ],
+              },
+              { type: 'goto', vals: { target: 'zgaduj' } },
+            ],
+          },
+        ]},
+        { type: 'end', vals: {} },
+      ]},
+    ],
+  },
   hello: {
     icon: '👋', title: 'Powitanie', desc: 'Zapisz imię w zmiennej i przywitaj się!',
     versions: [
