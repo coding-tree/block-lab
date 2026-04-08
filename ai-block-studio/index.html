@@ -553,7 +553,7 @@ body { font-family: var(--font-ui); background: var(--bg); color: var(--text); d
     <div class="rec-dot"></div> REC
   </div>
   <div class="tb-sep"></div>
-  <select class="tb-btn" id="example-select" onchange="loadExample(this.value); this.value='';" style="min-width:120px;">
+  <select class="tb-btn" id="example-select" onchange="onExampleSelect(this.value); this.value='';" style="min-width:120px;">
     <option value="">📂 Przykłady...</option>
   </select>
   <button class="tb-btn" onclick="generateFromAI()">✦ AI → Bloki</button>
@@ -1172,7 +1172,16 @@ function playNextFrame() {
     return;
   }
   applyFrame(state.playhead);
-  const delay = parseInt(document.getElementById('pb-speed').value);
+  const speedVal = parseInt(document.getElementById('pb-speed').value);
+  // Use real time gaps between frames, scaled by speed multiplier
+  let delay = speedVal;
+  const next = state.playhead + 1;
+  if (next < state.session.length) {
+    const gap = state.session[next].t - state.session[state.playhead].t;
+    // speed selector: 2000=0.5x, 1000=1x, 500=2x, 200=5x → multiplier = 1000/speedVal
+    const multiplier = 1000 / speedVal;
+    delay = Math.max(150, gap / multiplier);
+  }
   state.playTimer = setTimeout(() => {
     state.playhead++;
     playNextFrame();
@@ -1540,12 +1549,166 @@ function loadExample(key) {
 
 function buildExampleSelect() {
   const sel = document.getElementById('example-select');
+  const grp1 = document.createElement('optgroup');
+  grp1.label = '📂 Projekty';
   Object.entries(EXAMPLES).forEach(([key, ex]) => {
     const opt = document.createElement('option');
-    opt.value = key;
+    opt.value = 'project:' + key;
     opt.textContent = ex.title;
-    sel.appendChild(opt);
+    grp1.appendChild(opt);
   });
+  sel.appendChild(grp1);
+  const grp2 = document.createElement('optgroup');
+  grp2.label = '🎬 Tutoriale (nagrania)';
+  Object.entries(SESSION_EXAMPLES).forEach(([key, ses]) => {
+    const opt = document.createElement('option');
+    opt.value = 'session:' + key;
+    opt.textContent = ses.title;
+    grp2.appendChild(opt);
+  });
+  sel.appendChild(grp2);
+}
+
+// ═══════════════════════════════════════════════
+//  SESSION EXAMPLES (pre-recorded tutorials)
+// ═══════════════════════════════════════════════
+
+// Helper: build session frames from a list of steps
+// Each step: { action, data, addBlock?, editField? }
+function buildSession(steps) {
+  const frames = [];
+  const blocks = [];
+  let counter = 0;
+  let t = 0;
+
+  steps.forEach(step => {
+    t += step.delay || 1500;
+    if (step.action === 'add_block') {
+      counter++;
+      const def = BLOCK_MAP[step.data.type];
+      const allFields = [...(def?.fields || []), ...(def?.fields2 || [])];
+      const f = {};
+      allFields.forEach(fd => f[fd.k] = step.data.fields?.[fd.k] || '');
+      blocks.push({ id: counter, type: step.data.type, fields: f });
+    } else if (step.action === 'edit_field') {
+      const b = blocks.find(b => b.id === step.data.id);
+      if (b) b.fields[step.data.key] = step.data.val;
+    } else if (step.action === 'switch_mode') {
+      // no block change
+    }
+    frames.push({
+      t,
+      action: step.action,
+      data: step.data,
+      snapshot: JSON.parse(JSON.stringify(blocks)),
+      mode: step.mode || 'blocks',
+    });
+  });
+  return frames;
+}
+
+const SESSION_EXAMPLES = {
+  tutHello: {
+    title: '🎬 Powitanie krok po kroku',
+    steps: [
+      { action: 'session_start', data: { blocks: [] }, delay: 500 },
+      { action: 'add_block', data: { type: 'on_start' }, delay: 1200 },
+      { action: 'add_block', data: { type: 'set_var', fields: { name: '', val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 2, key: 'name', val: 'imię' }, delay: 800 },
+      { action: 'edit_field', data: { id: 2, key: 'val', val: '"Zosia"' }, delay: 1000 },
+      { action: 'add_block', data: { type: 'print', fields: { val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 3, key: 'val', val: '"Cześć " + imię + "!"' }, delay: 1200 },
+      { action: 'add_block', data: { type: 'print', fields: { val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 4, key: 'val', val: '"Miło Cię poznać!"' }, delay: 1000 },
+      { action: 'switch_mode', data: { mode: 'code' }, mode: 'code', delay: 2000 },
+      { action: 'switch_mode', data: { mode: 'blocks' }, mode: 'blocks', delay: 2000 },
+      { action: 'run', data: {}, delay: 1500 },
+    ],
+  },
+  tutCountdown: {
+    title: '🎬 Budowanie odliczania',
+    steps: [
+      { action: 'session_start', data: { blocks: [] }, delay: 500 },
+      { action: 'add_block', data: { type: 'on_start' }, delay: 1000 },
+      { action: 'add_block', data: { type: 'set_title', fields: { text: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 2, key: 'text', val: 'Odliczanie!' }, delay: 800 },
+      { action: 'add_block', data: { type: 'set_var', fields: { name: '', val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 3, key: 'name', val: 'i' }, delay: 600 },
+      { action: 'edit_field', data: { id: 3, key: 'val', val: '5' }, delay: 600 },
+      { action: 'add_block', data: { type: 'repeat', fields: { n: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 4, key: 'n', val: '5' }, delay: 800 },
+      { action: 'add_block', data: { type: 'print', fields: { val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 5, key: 'val', val: 'i + "..."' }, delay: 1000 },
+      { action: 'add_block', data: { type: 'set_var', fields: { name: '', val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 6, key: 'name', val: 'i' }, delay: 600 },
+      { action: 'edit_field', data: { id: 6, key: 'val', val: 'i - 1' }, delay: 800 },
+      { action: 'add_block', data: { type: 'wait', fields: { ms: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 7, key: 'ms', val: '1000' }, delay: 800 },
+      { action: 'add_block', data: { type: 'print', fields: { val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 8, key: 'val', val: '"🚀 START!"' }, delay: 1000 },
+      { action: 'switch_mode', data: { mode: 'code' }, mode: 'code', delay: 2000 },
+      { action: 'switch_mode', data: { mode: 'blocks' }, mode: 'blocks', delay: 2000 },
+      { action: 'run', data: {}, delay: 1500 },
+    ],
+  },
+  tutDice: {
+    title: '🎬 Gra w kości',
+    steps: [
+      { action: 'session_start', data: { blocks: [] }, delay: 500 },
+      { action: 'add_block', data: { type: 'on_start' }, delay: 1000 },
+      { action: 'add_block', data: { type: 'set_var', fields: { name: '', val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 2, key: 'name', val: 'punkty' }, delay: 800 },
+      { action: 'edit_field', data: { id: 2, key: 'val', val: '0' }, delay: 600 },
+      { action: 'add_block', data: { type: 'repeat', fields: { n: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 3, key: 'n', val: '5' }, delay: 800 },
+      { action: 'add_block', data: { type: 'set_var', fields: { name: '', val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 4, key: 'name', val: 'rzut' }, delay: 800 },
+      { action: 'edit_field', data: { id: 4, key: 'val', val: 'Math.floor(Math.random() * 6) + 1' }, delay: 1500 },
+      { action: 'add_block', data: { type: 'set_var', fields: { name: '', val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 5, key: 'name', val: 'punkty' }, delay: 800 },
+      { action: 'edit_field', data: { id: 5, key: 'val', val: 'punkty + rzut' }, delay: 1000 },
+      { action: 'add_block', data: { type: 'print', fields: { val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 6, key: 'val', val: '"🎲 Rzut: " + rzut + " → razem: " + punkty' }, delay: 1500 },
+      { action: 'add_block', data: { type: 'wait', fields: { ms: '' } }, delay: 1200 },
+      { action: 'edit_field', data: { id: 7, key: 'ms', val: '500' }, delay: 600 },
+      { action: 'add_block', data: { type: 'if_true', fields: { cond: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 8, key: 'cond', val: 'punkty > 15' }, delay: 1000 },
+      { action: 'add_block', data: { type: 'print', fields: { val: '' } }, delay: 1500 },
+      { action: 'edit_field', data: { id: 9, key: 'val', val: '"🏆 Świetny wynik: " + punkty' }, delay: 1200 },
+      { action: 'switch_mode', data: { mode: 'code' }, mode: 'code', delay: 2000 },
+      { action: 'switch_mode', data: { mode: 'blocks' }, mode: 'blocks', delay: 2000 },
+      { action: 'run', data: {}, delay: 1500 },
+    ],
+  },
+};
+
+// Build sessions from steps on load
+Object.values(SESSION_EXAMPLES).forEach(ses => {
+  ses.frames = buildSession(ses.steps);
+});
+
+function loadSessionExample(key) {
+  const ses = SESSION_EXAMPLES[key];
+  if (!ses) return;
+  state.blocks = [];
+  state.counter = 0;
+  state.session = JSON.parse(JSON.stringify(ses.frames));
+  state.playhead = 0;
+  renderAll();
+  renderTimeline();
+  updateStatus();
+  document.getElementById('btn-play').style.display = '';
+  document.getElementById('btn-export').style.display = '';
+  toast('Załadowano tutorial: ' + ses.title);
+}
+
+function onExampleSelect(val) {
+  if (!val) return;
+  if (val.startsWith('project:')) {
+    loadExample(val.slice(8));
+  } else if (val.startsWith('session:')) {
+    loadSessionExample(val.slice(8));
+  }
 }
 
 // ═══════════════════════════════════════════════
