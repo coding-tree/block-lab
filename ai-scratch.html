@@ -1155,8 +1155,7 @@ function log(text, type = '') {
   } else {
     el.textContent = text;
   }
-  body.appendChild(el);
-  body.scrollTop = body.scrollHeight;
+  body.prepend(el);
   return el;
 }
 
@@ -1165,15 +1164,12 @@ function logAI(text) {
   const el = document.createElement('div');
   el.className = 'output-line ai';
   el.innerHTML = `<div class="output-label">🤖 AI odpowiada</div><span id="ai-typing"></span>`;
-  body.appendChild(el);
-  body.scrollTop = body.scrollHeight;
-  // typewriter
+  body.prepend(el);
   const span = el.querySelector('#ai-typing');
   span.id = '';
   let i = 0;
   const interval = setInterval(() => {
     span.textContent += text[i++] || '';
-    body.scrollTop = body.scrollHeight;
     if (i >= text.length) clearInterval(interval);
   }, 12);
 }
@@ -1183,8 +1179,7 @@ function logLoading() {
   const el = document.createElement('div');
   el.className = 'output-line ai';
   el.innerHTML = `<span class="spinner"></span> AI myśli...`;
-  body.appendChild(el);
-  body.scrollTop = body.scrollHeight;
+  body.prepend(el);
   return el;
 }
 
