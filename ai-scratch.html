@@ -153,11 +153,36 @@
     left: 50%;
     transform: translate(-50%, -50%);
     text-align: center;
-    color: var(--border);
-    pointer-events: none;
+    color: var(--muted);
     font-size: 13px;
+    width: 90%;
+    max-width: 520px;
   }
-  .drop-hint .emoji { font-size: 52px; display: block; margin-bottom: 10px; }
+  .drop-hint .emoji { font-size: 42px; display: block; margin-bottom: 8px; }
+  .drop-hint .subtitle { color: var(--border); margin-bottom: 20px; }
+
+  .examples-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 16px;
+    text-align: left;
+  }
+  .example-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color .15s, transform .15s;
+  }
+  .example-card:hover {
+    border-color: var(--accent5);
+    transform: translateY(-2px);
+  }
+  .example-card .ex-icon { font-size: 22px; margin-bottom: 6px; }
+  .example-card .ex-title { font-weight: 800; font-size: 13px; margin-bottom: 4px; }
+  .example-card .ex-desc { font-size: 11px; color: var(--muted); line-height: 1.5; }
 
   /* ── SCRIPT STACK ── */
   .script-stack {
@@ -481,7 +506,30 @@
     <div class="canvas-inner" id="canvasInner">
       <div class="drop-hint" id="dropHint">
         <span class="emoji">🧩</span>
-        Przeciągnij bloki tutaj<br>i zbuduj swój program!
+        Przeciągnij bloki tutaj i zbuduj swój program!
+        <div class="subtitle">...albo wypróbuj gotowy przykład:</div>
+        <div class="examples-grid">
+          <div class="example-card" onclick="loadExample('hello')">
+            <div class="ex-icon">👋</div>
+            <div class="ex-title">Powitanie</div>
+            <div class="ex-desc">Zapisz imię w zmiennej i przywitaj się!</div>
+          </div>
+          <div class="example-card" onclick="loadExample('animal')">
+            <div class="ex-icon">🐾</div>
+            <div class="ex-title">Losowe zwierzę</div>
+            <div class="ex-desc">Wylosuj zwierzę i powiedz co robi.</div>
+          </div>
+          <div class="example-card" onclick="loadExample('countdown')">
+            <div class="ex-icon">🚀</div>
+            <div class="ex-title">Odliczanie</div>
+            <div class="ex-desc">Odlicz od 3 do startu rakiety!</div>
+          </div>
+          <div class="example-card" onclick="loadExample('story')">
+            <div class="ex-icon">📖</div>
+            <div class="ex-title">Generator zdań</div>
+            <div class="ex-desc">Losuj słowa i buduj śmieszne zdania.</div>
+          </div>
+        </div>
       </div>
       <div class="script-stack" id="scriptStack"></div>
     </div>
@@ -885,6 +933,53 @@ function interpolateVars(text) {
 
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+// ── EXAMPLES ──
+const EXAMPLES = {
+  hello: [
+    { type: 'start', vals: {} },
+    { type: 'set-var', vals: { name: 'imię', value: 'Zosia' } },
+    { type: 'say', vals: { text: 'Cześć {imię}!' } },
+    { type: 'say', vals: { text: 'Miło Cię poznać!' } },
+    { type: 'wait', vals: { secs: '1' } },
+    { type: 'say', vals: { text: 'Pa pa, {imię}! Do zobaczenia!' } },
+  ],
+  animal: [
+    { type: 'start', vals: {} },
+    { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
+    { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+    { type: 'if-random', vals: { options: 'śpi, je, biega, tańczy, śpiewa' } },
+    { type: 'say', vals: { text: 'Mój {zwierzę} właśnie {_random}!' } },
+  ],
+  countdown: [
+    { type: 'start', vals: {} },
+    { type: 'say', vals: { text: 'Uwaga! Odliczam...' } },
+    { type: 'wait', vals: { secs: '1' } },
+    { type: 'say', vals: { text: '3...' } },
+    { type: 'wait', vals: { secs: '1' } },
+    { type: 'say', vals: { text: '2...' } },
+    { type: 'wait', vals: { secs: '1' } },
+    { type: 'say', vals: { text: '1...' } },
+    { type: 'wait', vals: { secs: '1' } },
+    { type: 'say', vals: { text: '🚀 START! Rakieta wystartowała!' } },
+  ],
+  story: [
+    { type: 'start', vals: {} },
+    { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny' } },
+    { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
+    { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat, astronauta' } },
+    { type: 'set-var', vals: { name: 'kto', value: '{_random}' } },
+    { type: 'if-random', vals: { options: 'poszedł na lody, poleciał na Marsa, znalazł skarb, nauczył się latać' } },
+    { type: 'say', vals: { text: '{jaki} {kto} {_random}!' } },
+  ],
+};
+
+function loadExample(name) {
+  const example = EXAMPLES[name];
+  if (!example) return;
+  blocks = example.map((b, i) => ({ id: ++blockCounter, type: b.type, vals: { ...b.vals } }));
+  renderBlocks();
 }
 
 // ── INIT ──
