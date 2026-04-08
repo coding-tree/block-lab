@@ -397,22 +397,22 @@
 <body>
 
 <!-- API KEY MODAL -->
-<div class="modal-overlay" id="apiModal">
+<div class="modal-overlay" id="apiModal" style="display:none">
   <div class="modal">
     <h2>🔑 Klucz API</h2>
     <p>Aby używać bloków AI, podaj swój klucz API Anthropic. Jest przechowywany tylko w pamięci przeglądarki.</p>
     <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-..." autocomplete="off">
     <button onclick="saveKey()">Zapisz i zacznij! 🚀</button>
-    <span class="modal-skip" onclick="skipKey()">Pomiń (bez AI)</span>
+    <span class="modal-skip" onclick="closeModal()">Anuluj</span>
   </div>
 </div>
 
 <!-- HEADER -->
 <header>
   <div class="logo"><span>AI</span> <em>Scratch</em> 🤖</div>
-  <div style="font-size:12px; color:var(--muted); margin-left:4px;">
-    <span class="key-dot" id="keyDot"></span>
-    <span id="keyStatus">brak klucza</span>
+  <div style="font-size:12px; color:var(--muted); margin-left:4px; cursor:pointer;" onclick="showModal()" title="Kliknij aby dodać klucz API">
+    <span class="key-dot no-key" id="keyDot"></span>
+    <span id="keyStatus">brak klucza AI</span>
   </div>
   <button class="clear-btn" onclick="clearCanvas()">🗑 Wyczyść</button>
   <button class="run-btn" onclick="runScript()">▶ Uruchom</button>
@@ -517,19 +517,30 @@ const BLOCK_DEFS = {
 };
 
 // ── API KEY ──
+function showModal() {
+  document.getElementById('apiModal').style.display = '';
+  document.getElementById('apiKeyInput').focus();
+}
+function closeModal() {
+  document.getElementById('apiModal').style.display = 'none';
+}
 function saveKey() {
   const val = document.getElementById('apiKeyInput').value.trim();
   if (val) {
     apiKey = val;
     document.getElementById('keyDot').classList.remove('no-key');
     document.getElementById('keyStatus').textContent = 'klucz aktywny';
+    toggleAiBlocks(true);
   }
   document.getElementById('apiModal').style.display = 'none';
 }
-function skipKey() {
-  document.getElementById('keyDot').classList.add('no-key');
-  document.getElementById('keyStatus').textContent = 'brak klucza AI';
-  document.getElementById('apiModal').style.display = 'none';
+function toggleAiBlocks(show) {
+  document.querySelectorAll('.palette .block-template.b-ai').forEach(el => {
+    el.style.display = show ? '' : 'none';
+  });
+  document.querySelectorAll('.palette h3').forEach(h => {
+    if (h.textContent.includes('AI')) h.style.display = show ? '' : 'none';
+  });
 }
 
 // ── DRAG FROM PALETTE ──
@@ -874,6 +885,7 @@ function sleep(ms) {
 
 // ── INIT ──
 renderBlocks();
+toggleAiBlocks(false);
 </script>
 </body>
 </html>
