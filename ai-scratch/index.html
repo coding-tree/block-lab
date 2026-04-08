@@ -172,11 +172,17 @@
   <!-- OUTPUT -->
   <div class="output-panel">
     <div class="output-tabs">
-      <button class="output-tab active" onclick="switchTab('output')">📺 Wyniki</button>
+      <button class="output-tab active" onclick="switchTab('output')">📺 Output</button>
       <button class="output-tab" onclick="switchTab('console')">🖥 Konsola</button>
       <button class="output-tab" onclick="switchTab('vars')">📦 Zmienne</button>
     </div>
-    <div class="output-pane active" id="outputBody" data-tab="output"></div>
+    <div class="output-pane active" id="outputPane" data-tab="output">
+      <div class="output-mode-bar">
+        <button class="output-mode-btn active" onclick="setOutputMode('say')" data-mode="say">💬 Powiedz</button>
+        <button class="output-mode-btn" onclick="setOutputMode('all')" data-mode="all">📋 Wszystko</button>
+      </div>
+      <div id="outputBody"></div>
+    </div>
     <div class="output-pane" id="consoleBody" data-tab="console"></div>
     <div class="output-pane" id="varsBody" data-tab="vars">
       <div class="var-empty">Brak zmiennych — uruchom program.</div>

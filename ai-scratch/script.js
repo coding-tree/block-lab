@@ -63,6 +63,16 @@ function switchTab(tab) {
   document.querySelector(`.output-tab[onclick*="${tab}"]`).classList.add('active');
 }
 
+// ── OUTPUT MODE ──
+let outputMode = 'say';
+
+function setOutputMode(mode) {
+  outputMode = mode;
+  document.querySelectorAll('.output-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  const body = document.getElementById('outputBody');
+  body.classList.toggle('show-all', mode === 'all');
+}
+
 // ── CONSOLE LOG ──
 function clog(text) {
   const body = document.getElementById('consoleBody');

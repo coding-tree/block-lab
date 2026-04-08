@@ -433,6 +433,38 @@
     font-size: 12.5px;
   }
   .output-pane.active { display: flex; }
+  #outputPane { overflow: hidden; }
+  #outputPane.active { display: flex; flex-direction: column; }
+
+  /* ── OUTPUT MODE BAR ── */
+  .output-mode-bar {
+    display: flex;
+    gap: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    flex-shrink: 0;
+  }
+  .output-mode-btn {
+    font-family: 'Nunito', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .output-mode-btn:hover { color: var(--text); border-color: var(--accent5); }
+  .output-mode-btn.active { background: var(--accent5); color: #fff; border-color: var(--accent5); }
+
+  #outputBody { display: flex; flex-direction: column; gap: 10px; flex: 1; overflow-y: auto; }
+  #outputBody .output-line.info,
+  #outputBody .output-line.debug { display: none; }
+  #outputBody.show-all .output-line.info,
+  #outputBody.show-all .output-line.debug { display: block; }
 
   .output-line {
     background: var(--card);
