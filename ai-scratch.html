@@ -1748,6 +1748,10 @@ async function runScript() {
     log('Zacznij od bloku "🚩 Kiedy kliknięto"!', 'error');
     return;
   }
+  if (blocks[blocks.length - 1]?.type !== 'end') {
+    log('Dodaj blok "🛑 Zakończ program" na końcu programu!', 'error');
+    return;
+  }
 
   log('Uruchamiam program...', 'info');
   clog('▶ Program uruchomiony');
@@ -2326,6 +2330,9 @@ function loadExample(name, vIdx) {
   const ver = example.versions[idx];
   if (!ver) return;
   blocks = cloneBlocks(ver.blocks);
+  if (blocks.length === 0 || blocks[blocks.length - 1].type !== 'end') {
+    blocks.push({ id: ++blockCounter, type: 'end', vals: {} });
+  }
   currentExample = { name, vIdx: idx };
   renderBlocks();
   renderVersionBar();
