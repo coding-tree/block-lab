@@ -416,6 +416,7 @@
   </div>
   <button class="clear-btn" onclick="clearCanvas()">🗑 Wyczyść</button>
   <button class="run-btn" onclick="runScript()">▶ Uruchom</button>
+  <span id="commitHash" style="margin-left:auto; font-family:'Space Mono',monospace; font-size:10px; color:var(--border); cursor:default;" title="commit hash"></span>
 </header>
 
 <!-- WORKSPACE -->
@@ -884,8 +885,10 @@ function sleep(ms) {
 }
 
 // ── INIT ──
+const BUILD_HASH = '__COMMIT_HASH__';
 renderBlocks();
 toggleAiBlocks(false);
+document.getElementById('commitHash').textContent = BUILD_HASH;
 </script>
 </body>
 </html>
