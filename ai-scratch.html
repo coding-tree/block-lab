@@ -468,6 +468,63 @@
     pointer-events: none;
   }
 
+  /* ── IF-ELSE BLOCK ── */
+  .b-if-else { background: #3a2d1f; color: #ffb347; border-color: #ff9f1c; }
+  .block-if-else {
+    border-radius: var(--block-radius);
+    border: 2px solid #ff9f1c;
+    background: #3a2d1f;
+    position: relative;
+  }
+  .block-if-else-header {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffb347;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .block-if-else-header select {
+    background: #ffffff22;
+    border: 1.5px solid #ffffff33;
+    border-radius: 6px;
+    padding: 3px 6px;
+    color: #fff;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 12px;
+    outline: none;
+    cursor: pointer;
+  }
+  .block-if-label {
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ff9f1c88;
+    padding: 2px 8px 0;
+  }
+  .block-if-body {
+    min-height: 36px;
+    margin: 0 8px 4px;
+    padding: 8px;
+    border-radius: 8px;
+    background: #0f0e17aa;
+    border: 2px dashed #ff9f1c33;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    transition: border-color .15s, background .15s;
+  }
+  .block-if-body.drag-over {
+    border-color: #ff9f1c;
+    background: #ff9f1c22;
+  }
+  .block-if-body .block::before { display: none; }
+  .block-if-body-else { margin-bottom: 8px; }
+
   /* ── DEBUG BLOCK COLOR ── */
   .b-debug { background: #4a2222; color: #ff7777; border-color: #ff4444; }
   .block.disabled { opacity: .35; }
@@ -659,6 +716,9 @@
     <div class="block-template b-group" draggable="true" data-type="group">
       📎 Grupa: <em style="opacity:.6">nazwa</em>
     </div>
+    <div class="block-template b-if" draggable="true" data-type="if-else">
+      ❓ Jeżeli... to... inaczej...
+    </div>
 
     <h3>📦 Zmienne</h3>
     <div class="block-template b-var" draggable="true" data-type="set-var">
@@ -716,9 +776,14 @@
             <div class="ex-title">Quiz zwierzęcy</div>
             <div class="ex-desc">Grupa + Powtórz = 3 rundy quizu!</div>
           </div>
+          <div class="example-card" onclick="loadExample('ifElseDemo')">
+            <div class="ex-icon">❓</div>
+            <div class="ex-title">Jeżeli... to...</div>
+            <div class="ex-desc">Losuj zwierzę i sprawdź czy to kot!</div>
+          </div>
           <div class="example-card" onclick="loadExample('debugDemo')">
-            <div class="ex-icon">🛑</div>
-            <div class="ex-title">Debug demo</div>
+            <div class="ex-icon">⏸</div>
+            <div class="ex-title">Pauza demo</div>
             <div class="ex-desc">Zatrzymaj program i sprawdź zmienne.</div>
           </div>
         </div>
@@ -764,6 +829,7 @@ const BLOCK_DEFS = {
   'set-var':    { label: '📦 Ustaw zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }, { key: 'value', placeholder: 'Zosia' }] },
   'show-var':   { label: '👁 Pokaż zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }] },
   'group':      { label: '📎 Grupa', cls: 'b-group', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
+  'if-else':    { label: '❓ Jeżeli', cls: 'b-if-else', inputs: [], isIfElse: true },
   'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
 };
 
@@ -896,6 +962,7 @@ function addBlock(type, vals = {}, targetArray = null) {
   const id = ++blockCounter;
   const block = { id, type, vals: { ...vals } };
   if (def.isGroup) block.children = [];
+  if (def.isIfElse) { block.children = []; block.elseChildren = []; block.vals = { left: vals.left || '', op: vals.op || '=', right: vals.right || '', ...vals }; }
   (targetArray || blocks).push(block);
   renderBlocks();
 }
@@ -916,6 +983,43 @@ function renderBlocks() {
     const anyEnabled = debugBlocks.some(b => !b.disabled);
     btn.textContent = anyEnabled ? '⏸ Wyłącz wszystkie pauzy' : '▶ Włącz wszystkie pauzy';
   }
+}
+
+function initNewBlock(type) {
+  const def = BLOCK_DEFS[type];
+  if (!def) return null;
+  const block = { id: ++blockCounter, type, vals: {} };
+  if (def.isGroup) block.children = [];
+  if (def.isIfElse) { block.children = []; block.elseChildren = []; block.vals = { left: '', op: '=', right: '' }; }
+  return block;
+}
+
+function setupDropZone(el, targetArr, path) {
+  el.addEventListener('dragover', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.dataTransfer.dropEffect = 'copy';
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    el.classList.remove('drag-over');
+    const type = ev.dataTransfer.getData('block-type');
+    if (type) {
+      const newBlock = initNewBlock(type);
+      if (newBlock) targetArr.push(newBlock);
+      renderBlocks();
+      return;
+    }
+    if (dragSrc !== null) {
+      const moved = removeByPath(String(dragSrc));
+      if (moved) targetArr.push(moved);
+      renderBlocks();
+      dragSrc = null;
+    }
+  });
 }
 
 function renderBlockList(blkArray, container, parentPath) {
@@ -956,42 +1060,79 @@ function renderBlockList(blkArray, container, parentPath) {
       }
 
       // drop into group
-      body.addEventListener('dragover', ev => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        ev.dataTransfer.dropEffect = 'copy';
-        body.classList.add('drag-over');
-      });
-      body.addEventListener('dragleave', ev => {
-        body.classList.remove('drag-over');
-      });
-      body.addEventListener('drop', ev => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        body.classList.remove('drag-over');
-        const type = ev.dataTransfer.getData('block-type');
-        if (type) {
-          // drop from palette
-          const newDef = BLOCK_DEFS[type];
-          if (!newDef) return;
-          const newBlock = { id: ++blockCounter, type, vals: {} };
-          if (newDef.isGroup) newBlock.children = [];
-          b.children.push(newBlock);
-          renderBlocks();
-          return;
-        }
-        // reorder from canvas
-        if (dragSrc !== null) {
-          const moved = removeByPath(String(dragSrc));
-          if (moved) {
-            b.children.push(moved);
-            renderBlocks();
-          }
-          dragSrc = null;
-        }
-      });
+      setupDropZone(body, b.children, path);
 
       wrapper.appendChild(body);
+      container.appendChild(wrapper);
+    } else if (def.isIfElse) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'block-if-else';
+
+      // header with condition inputs
+      const header = document.createElement('div');
+      header.className = 'block-if-else-header';
+      let hhtml = `<span>❓ Jeżeli</span>`;
+      hhtml += ` <input class="block-input" value="${escHtml(b.vals.left || '')}" placeholder="zmienna"
+                   style="min-width:60px;max-width:120px"
+                   onclick="event.stopPropagation()"
+                   oninput="updateValByPath('${path}','left',this.value)">`;
+      hhtml += ` <select onchange="updateValByPath('${path}','op',this.value)">
+                   <option value="=" ${b.vals.op === '=' ? 'selected' : ''}>=</option>
+                   <option value="!=" ${b.vals.op === '!=' ? 'selected' : ''}>≠</option>
+                   <option value="zawiera" ${b.vals.op === 'zawiera' ? 'selected' : ''}>zawiera</option>
+                   <option value=">" ${b.vals.op === '>' ? 'selected' : ''}>></option>
+                   <option value="<" ${b.vals.op === '<' ? 'selected' : ''}><</option>
+                 </select>`;
+      hhtml += ` <input class="block-input" value="${escHtml(b.vals.right || '')}" placeholder="wartość"
+                   style="min-width:60px;max-width:120px"
+                   onclick="event.stopPropagation()"
+                   oninput="updateValByPath('${path}','right',this.value)">`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok" style="margin-left:auto">✕</button>`;
+      header.innerHTML = hhtml;
+      header.draggable = true;
+      header.addEventListener('dragstart', ev => {
+        dragSrc = path;
+        ev.dataTransfer.setData('block-path', path);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+      wrapper.appendChild(header);
+
+      // THEN body
+      const thenLabel = document.createElement('div');
+      thenLabel.className = 'block-if-label';
+      thenLabel.textContent = '✓ to:';
+      wrapper.appendChild(thenLabel);
+
+      const thenBody = document.createElement('div');
+      thenBody.className = 'block-if-body';
+      thenBody.dataset.path = path;
+      thenBody.dataset.branch = 'then';
+      if (b.children.length === 0) {
+        thenBody.innerHTML = '<div class="block-group-hint">Bloki gdy PRAWDA</div>';
+      } else {
+        renderBlockList(b.children, thenBody, path + '.then');
+      }
+      setupDropZone(thenBody, b.children, path);
+      wrapper.appendChild(thenBody);
+
+      // ELSE body
+      const elseLabel = document.createElement('div');
+      elseLabel.className = 'block-if-label';
+      elseLabel.textContent = '✗ inaczej:';
+      wrapper.appendChild(elseLabel);
+
+      const elseBody = document.createElement('div');
+      elseBody.className = 'block-if-body block-if-body-else';
+      elseBody.dataset.path = path;
+      elseBody.dataset.branch = 'else';
+      if (b.elseChildren.length === 0) {
+        elseBody.innerHTML = '<div class="block-group-hint">Bloki gdy FAŁSZ (opcjonalne)</div>';
+      } else {
+        renderBlockList(b.elseChildren, elseBody, path + '.else');
+      }
+      setupDropZone(elseBody, b.elseChildren, path);
+      wrapper.appendChild(elseBody);
+
       container.appendChild(wrapper);
     } else {
       const el = document.createElement('div');
@@ -1050,14 +1191,23 @@ function renderBlockList(blkArray, container, parentPath) {
 
 // ── PATH HELPERS ──
 function getArrayAndIndex(path) {
-  const parts = path.split('.').map(Number);
+  const parts = path.split('.');
   let arr = blocks;
   for (let i = 0; i < parts.length - 1; i++) {
-    const b = arr[parts[i]];
-    if (!b || !b.children) return null;
-    arr = b.children;
+    const part = parts[i];
+    if (part === 'then') { /* already navigated via parent */ continue; }
+    if (part === 'else') { /* already navigated via parent */ continue; }
+    const idx = Number(part);
+    const b = arr[idx];
+    if (!b) return null;
+    const next = parts[i + 1];
+    if (next === 'then') { arr = b.children; i++; }
+    else if (next === 'else') { arr = b.elseChildren; i++; }
+    else if (b.children) { arr = b.children; }
+    else return null;
   }
-  return { arr, idx: parts[parts.length - 1] };
+  const last = parts[parts.length - 1];
+  return { arr, idx: Number(last) };
 }
 
 function getBlockByPath(path) {
@@ -1299,6 +1449,32 @@ async function executeBlocks(blks, startIdx) {
         break;
       }
 
+      case 'if-else': {
+        const left = interpolateVars(vals.left || '');
+        const right = interpolateVars(vals.right || '');
+        const op = vals.op || '=';
+        let result = false;
+        switch (op) {
+          case '=':  result = left === right; break;
+          case '!=': result = left !== right; break;
+          case 'zawiera': result = left.includes(right); break;
+          case '>':  result = Number(left) > Number(right); break;
+          case '<':  result = Number(left) < Number(right); break;
+        }
+        clog(`  ❓ "${left}" ${op} "${right}" → ${result ? 'PRAWDA' : 'FAŁSZ'}`);
+        log(`❓ ${left} ${op} ${right} → ${result ? '✓ PRAWDA' : '✗ FAŁSZ'}`, 'info');
+        if (result) {
+          if (b.children && b.children.length > 0) {
+            await executeBlocks(b.children, 0);
+          }
+        } else {
+          if (b.elseChildren && b.elseChildren.length > 0) {
+            await executeBlocks(b.elseChildren, 0);
+          }
+        }
+        break;
+      }
+
       case 'if-random': {
         const opts = (vals.options || 'a, b').split(',').map(s => s.trim()).filter(Boolean);
         const chosen = opts[Math.floor(Math.random() * opts.length)];
@@ -1513,12 +1689,33 @@ const EXAMPLES = {
     { type: 'say', vals: { text: 'Wylosowany owoc: {owoc}!' } },
     { type: 'say', vals: { text: 'Sprawdź zakładkę Zmienne i Konsolę!' } },
   ],
+  ifElseDemo: [
+    { type: 'start', vals: {} },
+    { type: 'if-random', vals: { options: 'kot, pies, papuga' } },
+    { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+    { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'kot' },
+      children: [
+        { type: 'say', vals: { text: '🐱 Miau! To kot!' } },
+      ],
+      elseChildren: [
+        { type: 'say', vals: { text: '🤷 To nie kot, to {zwierzę}!' } },
+      ],
+    },
+    { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'papuga' },
+      children: [
+        { type: 'say', vals: { text: '🦜 Papuga mówi: Witaj!' } },
+      ],
+      elseChildren: [],
+    },
+    { type: 'say', vals: { text: 'Koniec sprawdzania!' } },
+  ],
 };
 
 function cloneBlocks(arr) {
   return arr.map(b => {
     const clone = { id: ++blockCounter, type: b.type, vals: { ...b.vals } };
     if (b.children) clone.children = cloneBlocks(b.children);
+    if (b.elseChildren) clone.elseChildren = cloneBlocks(b.elseChildren);
     return clone;
   });
 }
