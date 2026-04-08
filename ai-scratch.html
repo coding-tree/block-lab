@@ -1052,6 +1052,30 @@ function saveProject() {
   document.getElementById('projectNameInput').value = '';
 }
 
+function saveToProject(name) {
+  if (blocks.length === 0) return;
+  const projects = getProjects();
+  if (!projects[name]) projects[name] = { versions: [] };
+  const vNum = projects[name].versions.length + 1;
+  projects[name].versions.push({
+    v: vNum,
+    date: new Date().toLocaleString('pl-PL'),
+    blocks: JSON.parse(JSON.stringify(blocks)),
+  });
+  setProjects(projects);
+  renderProjectList();
+}
+
+function overwriteVersion(name, vIdx) {
+  if (blocks.length === 0) return;
+  const projects = getProjects();
+  if (!projects[name]?.versions[vIdx]) return;
+  projects[name].versions[vIdx].date = new Date().toLocaleString('pl-PL');
+  projects[name].versions[vIdx].blocks = JSON.parse(JSON.stringify(blocks));
+  setProjects(projects);
+  renderProjectList();
+}
+
 function loadVersion(name, vIdx) {
   const projects = getProjects();
   const ver = projects[name]?.versions[vIdx];
@@ -1101,18 +1125,23 @@ function renderProjectList() {
   list.innerHTML = '';
   names.forEach(name => {
     const p = projects[name];
+    const eName = escHtml(name);
     const div = document.createElement('div');
     div.className = 'project-item';
 
     let html = `<div style="display:flex;align-items:center;">`;
-    html += `<div class="project-item-name">${escHtml(name)}</div>`;
-    html += `<div class="project-actions"><button onclick="event.stopPropagation();deleteProject('${escHtml(name)}')" title="Usuń projekt">🗑</button></div>`;
-    html += `</div>`;
-    html += `<div class="project-item-meta">${p.versions.length} wersji</div>`;
-    html += `<div class="project-versions">`;
+    html += `<div class="project-item-name">${eName}</div>`;
+    html += `<div class="project-actions">`;
+    html += `<button onclick="event.stopPropagation();saveToProject('${eName}')" title="Dodaj nową wersję" style="color:var(--accent3);font-size:12px;">+ nowa</button>`;
+    html += `<button onclick="event.stopPropagation();deleteProject('${eName}')" title="Usuń projekt">🗑</button>`;
+    html += `</div></div>`;
+    html += `<div class="project-versions" style="margin-top:6px;">`;
     p.versions.forEach((v, i) => {
-      html += `<span class="version-chip" onclick="event.stopPropagation();loadVersion('${escHtml(name)}',${i})" title="${v.date}">v${v.v} · ${v.date}</span>`;
-      html += `<button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;padding:0 2px;" onclick="event.stopPropagation();deleteVersion('${escHtml(name)}',${i})" title="Usuń wersję">✕</button>`;
+      html += `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">`;
+      html += `<span class="version-chip" onclick="event.stopPropagation();loadVersion('${eName}',${i})" style="flex:1;">v${v.v} · ${v.date}</span>`;
+      html += `<button style="background:none;border:none;color:var(--accent6);cursor:pointer;font-size:10px;padding:2px 4px;" onclick="event.stopPropagation();overwriteVersion('${eName}',${i})" title="Nadpisz tę wersję">💾</button>`;
+      html += `<button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;padding:2px 4px;" onclick="event.stopPropagation();deleteVersion('${eName}',${i})" title="Usuń wersję">✕</button>`;
+      html += `</div>`;
     });
     html += `</div>`;
     div.innerHTML = html;
