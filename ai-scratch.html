@@ -242,6 +242,21 @@
   }
   .block-delete:hover { color: var(--accent1); background: #ff6b6b20; }
 
+  .block-move {
+    background: none;
+    border: none;
+    color: #ffffff44;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 3px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color .12s;
+    flex-shrink: 0;
+  }
+  .block-move:hover { color: #ffffffcc; }
+  .block-move:disabled { opacity: 0; cursor: default; pointer-events: none; }
+
   .block-expand {
     background: none;
     border: none;
@@ -1317,7 +1332,9 @@ function renderBlockList(blkArray, container, parentPath) {
       hhtml += ` <input class="block-input" value="${escHtml(b.vals.name || '')}" placeholder="moja grupa"
                    onclick="event.stopPropagation()"
                    oninput="updateValByPath('${path}','name',this.value)">`;
-      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń grupę" style="margin-left:auto">✕</button>`;
+      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" style="margin-left:auto" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
+      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń grupę">✕</button>`;
       header.innerHTML = hhtml;
       header.draggable = true;
       header.addEventListener('dragstart', ev => {
@@ -1366,7 +1383,9 @@ function renderBlockList(blkArray, container, parentPath) {
                    style="min-width:60px;max-width:120px"
                    onclick="event.stopPropagation()"
                    oninput="updateValByPath('${path}','right',this.value)">`;
-      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok" style="margin-left:auto">✕</button>`;
+      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" style="margin-left:auto" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
+      hhtml += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok">✕</button>`;
       header.innerHTML = hhtml;
       header.draggable = true;
       header.addEventListener('dragstart', ev => {
@@ -1431,6 +1450,8 @@ function renderBlockList(blkArray, container, parentPath) {
       if (b.type === 'debug-stop') {
         html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlockByPath('${path}')" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
       }
+      html += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
+      html += `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === blkArray.length - 1 ? 'disabled' : ''}>▼</button>`;
       html += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok">✕</button>`;
       el.innerHTML = html;
 
@@ -1513,6 +1534,17 @@ function updateValByPath(path, key, val) {
 function toggleBlockByPath(path) {
   const b = getBlockByPath(path);
   if (b) b.disabled = !b.disabled;
+  renderBlocks();
+}
+
+function moveBlockByPath(path, dir) {
+  const r = getArrayAndIndex(path);
+  if (!r) return;
+  const newIdx = r.idx + dir;
+  if (newIdx < 0 || newIdx >= r.arr.length) return;
+  const tmp = r.arr[r.idx];
+  r.arr[r.idx] = r.arr[newIdx];
+  r.arr[newIdx] = tmp;
   renderBlocks();
 }
 
