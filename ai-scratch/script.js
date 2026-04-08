@@ -25,7 +25,7 @@ const BLOCK_DEFS = {
   'group':      { label: '📎 Grupa', cls: 'b-group', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
   'if-else':    { label: '❓ Jeżeli', cls: 'b-if-else', inputs: [], isIfElse: true },
   'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
-  'goto':       { label: '↩ Idź do:', cls: 'b-repeat', inputs: [{ key: 'target', placeholder: 'start / nazwa grupy' }] },
+  'goto':       { label: '↩ Idź do:', cls: 'b-repeat', inputs: [], isGoto: true },
 };
 
 // ── API KEY ──
@@ -427,6 +427,16 @@ function createDropGap(blkArray, insertIdx) {
   return gap;
 }
 
+function collectGroupNames(blkArray) {
+  const names = [];
+  for (const b of blkArray) {
+    if (b.type === 'group' && (b.vals.name || '').trim()) names.push((b.vals.name || '').trim());
+    if (b.children) names.push(...collectGroupNames(b.children));
+    if (b.elseChildren) names.push(...collectGroupNames(b.elseChildren));
+  }
+  return names;
+}
+
 function renderBlockList(blkArray, container, parentPath) {
   blkArray.forEach((b, idx) => {
     const def = BLOCK_DEFS[b.type];
@@ -573,6 +583,20 @@ function renderBlockList(blkArray, container, parentPath) {
       if (def.suffix) html += ` <span style="pointer-events:none">${def.suffix}</span>`;
       if (b.type === 'debug-stop') {
         html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlockByPath('${path}')" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
+      }
+      if (def.isGoto) {
+        const allGroups = collectGroupNames(blocks);
+        const seen = new Set();
+        const uniqueGroups = allGroups.filter(n => { if (seen.has(n)) return false; seen.add(n); return true; });
+        const curTarget = b.vals.target || '';
+        html += ` <select class="block-input" style="min-width:100px"
+                    onclick="event.stopPropagation()"
+                    onchange="updateValByPath('${path}','target',this.value)">`;
+        html += `<option value="start"${curTarget === 'start' || curTarget === '' ? ' selected' : ''}>▶ start</option>`;
+        uniqueGroups.forEach(name => {
+          html += `<option value="${escHtml(name)}"${curTarget === name ? ' selected' : ''}>📎 ${escHtml(name)}</option>`;
+        });
+        html += `</select>`;
       }
       el.innerHTML = html;
 
@@ -1153,7 +1177,7 @@ async function executeBlocks(blks, startIdx) {
         if (gotoCount > MAX_GOTO) {
           throw new Error('Za dużo skoków (pętla nieskończona?) — zatrzymuję program.');
         }
-        if (target === 'start' || target === 'Start' || target === '▶ Start programu') {
+        if (target === 'start') {
           log(`↩ Skok do startu`, 'info');
           throw new GotoStart();
         } else {
