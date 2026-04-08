@@ -595,8 +595,8 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── BLOCK COLORS ── */
-  .b-start    { background: #2d4a22; color: #a8ff78; border-color: #6bcb77; }
-  .b-end      { background: #4a2222; color: #ff9999; border-color: #cc4444; }
+  .b-start    { background: linear-gradient(135deg, #2d4a22, #1a5a1a); color: #a8ff78; border-color: #6bcb77; font-size: 15px; letter-spacing: .5px; }
+  .b-end      { background: linear-gradient(135deg, #4a2222, #5a1a1a); color: #ff9999; border-color: #cc4444; font-size: 15px; letter-spacing: .5px; }
   .b-ai       { background: #2d1f4a; color: #c9a0ff; border-color: #c77dff; }
   .b-say      { background: #4a3a00; color: #ffd93d; border-color: #ffd93d; }
   .b-wait     { background: #1f3a4a; color: #7dd3fc; border-color: #4d9de0; }
@@ -840,9 +840,9 @@
 
   <!-- PALETTE -->
   <div class="palette">
-    <h3>🟢 Start</h3>
+    <h3>▶ Program</h3>
     <div class="block-template b-start" draggable="true" data-type="start">
-      🚩 Kiedy kliknięto
+      ▶ Start programu
     </div>
     <div class="block-template b-end" draggable="true" data-type="end">
       🛑 Zakończ program
@@ -964,7 +964,7 @@ let blockCounter = 0;
 let currentExample = null; // { name, vIdx }
 
 const BLOCK_DEFS = {
-  'start':      { label: '🚩 Kiedy kliknięto', cls: 'b-start', inputs: [] },
+  'start':      { label: '▶ Start programu', cls: 'b-start', inputs: [] },
   'end':        { label: '🛑 Zakończ program', cls: 'b-end', inputs: [] },
   'ai-ask':     { label: '🤖 Zapytaj AI:', cls: 'b-ai', inputs: [{ key: 'text', placeholder: 'Skąd bierze się tęcza?' }] },
   'ai-story':   { label: '📖 Napisz historię o:', cls: 'b-ai', inputs: [{ key: 'topic', placeholder: 'dinozaurach' }] },
@@ -1745,7 +1745,7 @@ async function runScript() {
     return;
   }
   if (blocks[0]?.type !== 'start') {
-    log('Zacznij od bloku "🚩 Kiedy kliknięto"!', 'error');
+    log('Zacznij od bloku "▶ Start programu"!', 'error');
     return;
   }
   if (blocks[blocks.length - 1]?.type !== 'end') {
