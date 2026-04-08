@@ -553,6 +553,9 @@ body { font-family: var(--font-ui); background: var(--bg); color: var(--text); d
     <div class="rec-dot"></div> REC
   </div>
   <div class="tb-sep"></div>
+  <select class="tb-btn" id="example-select" onchange="loadExample(this.value); this.value='';" style="min-width:120px;">
+    <option value="">📂 Przykłady...</option>
+  </select>
   <button class="tb-btn" onclick="generateFromAI()">✦ AI → Bloki</button>
   <button class="tb-btn green" onclick="runProgram()">▶ Uruchom</button>
   <div class="tb-spacer"></div>
@@ -1422,9 +1425,134 @@ document.addEventListener('keydown', e => {
 });
 
 // ═══════════════════════════════════════════════
+//  EXAMPLES
+// ═══════════════════════════════════════════════
+const EXAMPLES = {
+  hello: {
+    title: '👋 Powitanie',
+    blocks: [
+      { type: 'on_start', fields: {} },
+      { type: 'set_var', fields: { name: 'imię', val: '"Zosia"' } },
+      { type: 'print', fields: { val: '"Cześć " + imię + "!"' } },
+      { type: 'print', fields: { val: '"Miło Cię poznać!"' } },
+    ],
+  },
+  countdown: {
+    title: '🚀 Odliczanie',
+    blocks: [
+      { type: 'on_start', fields: {} },
+      { type: 'set_title', fields: { text: 'Odliczanie!' } },
+      { type: 'set_var', fields: { name: 'i', val: '5' } },
+      { type: 'repeat', fields: { n: '5' } },
+      { type: 'print', fields: { val: 'i + "..."' } },
+      { type: 'set_var', fields: { name: 'i', val: 'i - 1' } },
+      { type: 'wait', fields: { ms: '1000' } },
+      { type: 'print', fields: { val: '"🚀 START!"' } },
+    ],
+  },
+  color: {
+    title: '🎨 Kolory tła',
+    blocks: [
+      { type: 'on_start', fields: {} },
+      { type: 'set_title', fields: { text: 'Pokaz kolorów' } },
+      { type: 'repeat', fields: { n: '4' } },
+      { type: 'set_color', fields: { color: '#2d1b69' } },
+      { type: 'wait', fields: { ms: '500' } },
+      { type: 'set_color', fields: { color: '#1b4332' } },
+      { type: 'wait', fields: { ms: '500' } },
+      { type: 'set_color', fields: { color: '#6b1b1b' } },
+      { type: 'wait', fields: { ms: '500' } },
+      { type: 'set_color', fields: { color: '#0d1117' } },
+      { type: 'wait', fields: { ms: '500' } },
+    ],
+  },
+  calculator: {
+    title: '🔢 Kalkulator',
+    blocks: [
+      { type: 'on_start', fields: {} },
+      { type: 'set_var', fields: { name: 'a', val: '12' } },
+      { type: 'set_var', fields: { name: 'b', val: '5' } },
+      { type: 'set_var', fields: { name: 'suma', val: 'a + b' } },
+      { type: 'set_var', fields: { name: 'iloczyn', val: 'a * b' } },
+      { type: 'print', fields: { val: 'a + " + " + b + " = " + suma' } },
+      { type: 'print', fields: { val: 'a + " × " + b + " = " + iloczyn' } },
+      { type: 'if_true', fields: { cond: 'suma > 10' } },
+      { type: 'print', fields: { val: '"Suma jest większa niż 10!"' } },
+    ],
+  },
+  input: {
+    title: '⌨️ Wczytywanie',
+    blocks: [
+      { type: 'on_start', fields: {} },
+      { type: 'set_title', fields: { text: 'Quiz' } },
+      { type: 'print', fields: { val: '"Jak masz na imię?"' } },
+      { type: 'input', fields: { name: 'imię' } },
+      { type: 'print', fields: { val: '"Cześć " + imię + "!"' } },
+      { type: 'print', fields: { val: '"Ile masz lat?"' } },
+      { type: 'input', fields: { name: 'wiek' } },
+      { type: 'print', fields: { val: 'imię + " ma " + wiek + " lat!"' } },
+    ],
+  },
+  loop: {
+    title: '🔁 Pętla + warunek',
+    blocks: [
+      { type: 'on_start', fields: {} },
+      { type: 'set_var', fields: { name: 'punkty', val: '0' } },
+      { type: 'repeat', fields: { n: '5' } },
+      { type: 'set_var', fields: { name: 'rzut', val: 'Math.floor(Math.random() * 6) + 1' } },
+      { type: 'set_var', fields: { name: 'punkty', val: 'punkty + rzut' } },
+      { type: 'print', fields: { val: '"🎲 Rzut: " + rzut + " → razem: " + punkty' } },
+      { type: 'wait', fields: { ms: '500' } },
+      { type: 'if_true', fields: { cond: 'punkty > 15' } },
+      { type: 'print', fields: { val: '"🏆 Świetny wynik: " + punkty' } },
+    ],
+  },
+  presentation: {
+    title: '🎬 Prezentacja',
+    blocks: [
+      { type: 'on_start', fields: {} },
+      { type: 'set_title', fields: { text: 'Moja prezentacja' } },
+      { type: 'set_color', fields: { color: '#1a1a2e' } },
+      { type: 'print', fields: { val: '"📋 Slajd 1: Tytuł"' } },
+      { type: 'wait', fields: { ms: '2000' } },
+      { type: 'set_color', fields: { color: '#16213e' } },
+      { type: 'print', fields: { val: '"📋 Slajd 2: Treść"' } },
+      { type: 'wait', fields: { ms: '2000' } },
+      { type: 'set_color', fields: { color: '#0f3460' } },
+      { type: 'print', fields: { val: '"📋 Slajd 3: Podsumowanie"' } },
+      { type: 'wait', fields: { ms: '2000' } },
+      { type: 'print', fields: { val: '"👏 Dziękuję!"' } },
+    ],
+  },
+};
+
+function loadExample(key) {
+  if (!key || !EXAMPLES[key]) return;
+  state.blocks = [];
+  state.counter = 0;
+  EXAMPLES[key].blocks.forEach(b => {
+    addBlock(b.type, b.fields);
+  });
+  renderAll();
+  updateStatus();
+  toast('Załadowano: ' + EXAMPLES[key].title);
+}
+
+function buildExampleSelect() {
+  const sel = document.getElementById('example-select');
+  Object.entries(EXAMPLES).forEach(([key, ex]) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = ex.title;
+    sel.appendChild(opt);
+  });
+}
+
+// ═══════════════════════════════════════════════
 //  BOOT
 // ═══════════════════════════════════════════════
 init();
+buildExampleSelect();
 </script>
 </body>
 </html>
