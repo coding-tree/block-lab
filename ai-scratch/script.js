@@ -321,11 +321,16 @@ function addBlock(type, vals = {}, targetArray = null) {
   const block = { id, type, vals: { ...vals } };
   if (def.isGroup) block.children = [];
   if (def.isIfElse) { block.children = []; block.elseChildren = []; block.vals = { left: vals.left || '', op: vals.op || '=', right: vals.right || '', ...vals }; }
-  (targetArray || blocks).push(block);
-  renderBlocks();
+  if (targetArray) targetArray.push(block);
+  else if (drillDown && drillDown.arr && !drillDown.isBlock) drillDown.arr.push(block);
+  else if (!drillDown) blocks.push(block);
+  else return; // don't add to if-else block wrapper
+  if (drillDown && !targetArray) renderDrillView();
+  else renderBlocks();
 }
 
 function renderBlocks() {
+  if (drillDown) { renderDrillView(); return; }
   const stack = document.getElementById('scriptStack');
   const hint = document.getElementById('dropHint');
   hint.style.display = blocks.length ? 'none' : '';
@@ -440,7 +445,6 @@ function renderBlockList(blkArray, container, parentPath) {
       hhtml += ` <input class="block-input" value="${escHtml(b.vals.name || '')}" placeholder="moja grupa"
                    onclick="event.stopPropagation()"
                    oninput="updateValByPath('${path}','name',this.value)">`;
-      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń grupę" style="margin-left:auto">✕</button>`;
       header.innerHTML = hhtml;
       header.draggable = true;
       header.addEventListener('dragstart', ev => {
@@ -448,6 +452,7 @@ function renderBlockList(blkArray, container, parentPath) {
         ev.dataTransfer.setData('block-path', path);
         ev.dataTransfer.effectAllowed = 'move';
       });
+      if (!drillDown) header.addEventListener('dblclick', ev => { ev.stopPropagation(); openBlockDrill(path); });
       wrapper.appendChild(header);
 
       // body
@@ -489,7 +494,6 @@ function renderBlockList(blkArray, container, parentPath) {
                    style="min-width:60px;max-width:120px"
                    onclick="event.stopPropagation()"
                    oninput="updateValByPath('${path}','right',this.value)">`;
-      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok" style="margin-left:auto">✕</button>`;
       header.innerHTML = hhtml;
       header.draggable = true;
       header.addEventListener('dragstart', ev => {
@@ -497,13 +501,21 @@ function renderBlockList(blkArray, container, parentPath) {
         ev.dataTransfer.setData('block-path', path);
         ev.dataTransfer.effectAllowed = 'move';
       });
+      if (!drillDown) header.addEventListener('dblclick', ev => { ev.stopPropagation(); openBlockDrill(path); });
       wrapper.appendChild(header);
 
-      // THEN body
+      // branches container (horizontal layout)
+      const branches = document.createElement('div');
+      branches.className = 'block-if-branches';
+
+      // THEN branch
+      const thenBranch = document.createElement('div');
+      thenBranch.className = 'block-if-branch';
       const thenLabel = document.createElement('div');
       thenLabel.className = 'block-if-label';
       thenLabel.textContent = '✓ to:';
-      wrapper.appendChild(thenLabel);
+      if (!drillDown) thenLabel.addEventListener('dblclick', ev => { ev.stopPropagation(); openBranchDrill(path, 'then', '✓ to:'); });
+      thenBranch.appendChild(thenLabel);
 
       const thenBody = document.createElement('div');
       thenBody.className = 'block-if-body';
@@ -515,13 +527,17 @@ function renderBlockList(blkArray, container, parentPath) {
         renderBlockList(b.children, thenBody, path + '.then');
       }
       setupDropZone(thenBody, b.children, path, true);
-      wrapper.appendChild(thenBody);
+      thenBranch.appendChild(thenBody);
+      branches.appendChild(thenBranch);
 
-      // ELSE body
+      // ELSE branch
+      const elseBranch = document.createElement('div');
+      elseBranch.className = 'block-if-branch';
       const elseLabel = document.createElement('div');
       elseLabel.className = 'block-if-label';
       elseLabel.textContent = '✗ inaczej:';
-      wrapper.appendChild(elseLabel);
+      if (!drillDown) elseLabel.addEventListener('dblclick', ev => { ev.stopPropagation(); openBranchDrill(path, 'else', '✗ inaczej:'); });
+      elseBranch.appendChild(elseLabel);
 
       const elseBody = document.createElement('div');
       elseBody.className = 'block-if-body block-if-body-else';
@@ -533,7 +549,10 @@ function renderBlockList(blkArray, container, parentPath) {
         renderBlockList(b.elseChildren, elseBody, path + '.else');
       }
       setupDropZone(elseBody, b.elseChildren, path, true);
-      wrapper.appendChild(elseBody);
+      elseBranch.appendChild(elseBody);
+      branches.appendChild(elseBranch);
+
+      wrapper.appendChild(branches);
 
       container.appendChild(wrapWithMoveCol(wrapper, path, idx, blkArray.length));
     } else {
@@ -554,7 +573,6 @@ function renderBlockList(blkArray, container, parentPath) {
       if (b.type === 'debug-stop') {
         html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlockByPath('${path}')" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
       }
-      html += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok">✕</button>`;
       el.innerHTML = html;
 
       el.draggable = true;
@@ -581,15 +599,23 @@ function wrapWithMoveCol(el, path, idx, len) {
   col.className = 'block-move-col';
   col.innerHTML = `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" ${idx === 0 ? 'disabled' : ''}>▲</button>`
     + `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === len - 1 ? 'disabled' : ''}>▼</button>`;
+  const delCol = document.createElement('div');
+  delCol.className = 'block-delete-col';
+  delCol.innerHTML = `<button onclick="event.stopPropagation();deleteByPath('${path}')" title="Usuń">✕</button>`;
   row.appendChild(col);
   row.appendChild(el);
+  row.appendChild(delCol);
   return row;
 }
 
 // ── PATH HELPERS ──
+function getRootArray() {
+  return (drillDown && drillDown.arr) ? drillDown.arr : blocks;
+}
+
 function getArrayAndIndex(path) {
   const parts = path.split('.');
-  let arr = blocks;
+  let arr = getRootArray();
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
     if (part === 'then') { /* already navigated via parent */ continue; }
@@ -685,6 +711,8 @@ function toggleBlock(idx) {
 }
 
 function clearCanvas() {
+  drillDown = null;
+  document.getElementById('branchBar').style.display = 'none';
   blocks = [];
   variables = {};
   debugStopped = false;
@@ -1423,6 +1451,56 @@ function renderExamplesGrid() {
     html += `</div>`;
     grid.insertAdjacentHTML('beforeend', html);
   });
+}
+
+// ── DRILL-DOWN MODE ──
+let drillDown = null; // { arr, pathPrefix, label }
+
+function openDrillDown(arr, pathPrefix, label) {
+  drillDown = { arr, pathPrefix, label };
+  document.getElementById('branchBar').style.display = 'flex';
+  document.getElementById('branchBarLabel').textContent = label;
+  renderDrillView();
+}
+
+function openBranchDrill(path, branch, label) {
+  const b = getBlockByPath(path);
+  if (!b) return;
+  const arr = branch === 'then' ? b.children : b.elseChildren;
+  openDrillDown(arr, path + '.' + branch, `❓ Jeżeli → ${label}`);
+}
+
+function openBlockDrill(path) {
+  const b = getBlockByPath(path);
+  if (!b) return;
+  const def = BLOCK_DEFS[b.type];
+  if (!def) return;
+  if (def.isGroup) {
+    openDrillDown(b.children, path, `📎 Grupa: ${b.vals.name || 'grupa'}`);
+  } else if (def.isIfElse) {
+    drillDown = { arr: [b], path, label: `❓ Jeżeli ${b.vals.left || ''} ${b.vals.op || '='} ${b.vals.right || ''}`, isBlock: true };
+    document.getElementById('branchBar').style.display = 'flex';
+    document.getElementById('branchBarLabel').textContent = drillDown.label;
+    renderDrillView();
+  }
+}
+
+function exitDrillDown() {
+  drillDown = null;
+  document.getElementById('branchBar').style.display = 'none';
+  renderBlocks();
+}
+
+function renderDrillView() {
+  if (!drillDown) return;
+  const stack = document.getElementById('scriptStack');
+  const hint = document.getElementById('dropHint');
+  hint.style.display = 'none';
+  stack.innerHTML = '';
+  renderBlockList(drillDown.arr, stack, null);
+  if (drillDown.arr.length === 0) {
+    stack.innerHTML = '<div class="block-group-hint" style="padding:20px;text-align:center;">Przeciągnij bloki tutaj</div>';
+  }
 }
 
 // ── INIT ──
