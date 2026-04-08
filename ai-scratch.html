@@ -416,7 +416,6 @@
   </div>
   <button class="clear-btn" onclick="clearCanvas()">🗑 Wyczyść</button>
   <button class="run-btn" onclick="runScript()">▶ Uruchom</button>
-  <span id="commitHash" style="margin-left:auto; font-family:'Space Mono',monospace; font-size:10px; color:var(--border); cursor:default;" title="commit hash"></span>
 </header>
 
 <!-- WORKSPACE -->
@@ -468,6 +467,10 @@
     </div>
     <div class="block-template b-var" draggable="true" data-type="show-var">
       👁 Pokaż zmienną: <em style="opacity:.6">nazwa</em>
+    </div>
+    <div style="margin-top:auto; padding:10px 4px 4px; border-top:1px solid var(--border); text-align:center;">
+      <div style="font-size:11px; color:var(--muted); line-height:1.6;">made with love by<br><strong style="color:var(--text);">Coding Tree</strong></div>
+      <div id="commitHash" style="font-family:'Space Mono',monospace; font-size:9px; color:var(--border); margin-top:4px;"></div>
     </div>
   </div>
 
