@@ -625,6 +625,114 @@
     text-decoration: underline;
   }
 
+  /* ── SAVE/LOAD MODAL ── */
+  .save-modal {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    padding: 24px;
+    width: 500px;
+    max-width: 95vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .save-modal h2 { font-size: 18px; font-weight: 900; margin-bottom: 14px; }
+  .save-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .save-row input {
+    flex: 1;
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    outline: none;
+  }
+  .save-row input:focus { border-color: var(--accent5); }
+  .save-row button {
+    background: var(--accent3);
+    color: #0f0e17;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .project-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .project-item {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .project-item:hover { border-color: var(--accent5); }
+  .project-item-name {
+    font-weight: 800;
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .project-item-meta {
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .project-versions {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .version-chip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-family: 'Space Mono', monospace;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all .12s;
+  }
+  .version-chip:hover { border-color: var(--accent5); color: var(--text); }
+  .version-chip.active { border-color: var(--accent3); color: var(--accent3); }
+  .project-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .project-actions button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color .12s;
+  }
+  .project-actions button:hover { color: var(--accent1); }
+  .no-projects { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; font-style: italic; }
+
   .key-dot {
     width: 8px; height: 8px;
     border-radius: 50%;
@@ -648,6 +756,18 @@
   </div>
 </div>
 
+<!-- SAVE/LOAD MODAL -->
+<div class="modal-overlay" id="saveModal" style="display:none" onclick="if(event.target===this)closeSaveModal()">
+  <div class="save-modal">
+    <h2>💾 Projekty</h2>
+    <div class="save-row">
+      <input type="text" id="projectNameInput" placeholder="Nazwa projektu..." autocomplete="off">
+      <button onclick="saveProject()">💾 Zapisz</button>
+    </div>
+    <div class="project-list" id="projectList"></div>
+  </div>
+</div>
+
 <!-- TEXT POPUP -->
 <div class="text-popup-overlay" id="textPopup" style="display:none" onclick="if(event.target===this)closeTextPopup()">
   <div class="text-popup">
@@ -667,6 +787,7 @@
     <span class="key-dot no-key" id="keyDot"></span>
     <span id="keyStatus">brak klucza AI</span>
   </div>
+  <button class="clear-btn" onclick="openSaveModal()">💾 Projekty</button>
   <button class="clear-btn" onclick="clearCanvas()">🗑 Wyczyść</button>
   <button class="run-btn" id="resumeBtn" onclick="onResume()" style="display:none; background:var(--accent6);">▶ Kontynuuj</button>
   <button class="run-btn" id="runBtn" onclick="runScript()">▶ Uruchom</button>
@@ -926,6 +1047,112 @@ function resumeDebug() {
     debugResolve();
     debugResolve = null;
   }
+}
+
+// ── SAVE/LOAD ──
+const STORAGE_KEY = 'blocklab-projects';
+
+function getProjects() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+}
+
+function setProjects(p) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+}
+
+function openSaveModal() {
+  document.getElementById('saveModal').style.display = '';
+  document.getElementById('projectNameInput').value = '';
+  renderProjectList();
+  document.getElementById('projectNameInput').focus();
+}
+
+function closeSaveModal() {
+  document.getElementById('saveModal').style.display = 'none';
+}
+
+function saveProject() {
+  const name = document.getElementById('projectNameInput').value.trim();
+  if (!name) return;
+  const projects = getProjects();
+  if (!projects[name]) projects[name] = { versions: [] };
+  const vNum = projects[name].versions.length + 1;
+  projects[name].versions.push({
+    v: vNum,
+    date: new Date().toLocaleString('pl-PL'),
+    blocks: JSON.parse(JSON.stringify(blocks)),
+  });
+  setProjects(projects);
+  renderProjectList();
+  document.getElementById('projectNameInput').value = '';
+}
+
+function loadVersion(name, vIdx) {
+  const projects = getProjects();
+  const ver = projects[name]?.versions[vIdx];
+  if (!ver) return;
+  blocks = cloneBlocks(ver.blocks);
+  blockCounter = countBlocks(blocks);
+  renderBlocks();
+  closeSaveModal();
+}
+
+function countBlocks(arr) {
+  let c = 0;
+  arr.forEach(b => {
+    c++;
+    if (b.children) c += countBlocks(b.children);
+    if (b.elseChildren) c += countBlocks(b.elseChildren);
+  });
+  return c;
+}
+
+function deleteProject(name) {
+  const projects = getProjects();
+  delete projects[name];
+  setProjects(projects);
+  renderProjectList();
+}
+
+function deleteVersion(name, vIdx) {
+  const projects = getProjects();
+  if (!projects[name]) return;
+  projects[name].versions.splice(vIdx, 1);
+  // renumber
+  projects[name].versions.forEach((v, i) => v.v = i + 1);
+  if (projects[name].versions.length === 0) delete projects[name];
+  setProjects(projects);
+  renderProjectList();
+}
+
+function renderProjectList() {
+  const list = document.getElementById('projectList');
+  const projects = getProjects();
+  const names = Object.keys(projects);
+  if (names.length === 0) {
+    list.innerHTML = '<div class="no-projects">Brak zapisanych projektów</div>';
+    return;
+  }
+  list.innerHTML = '';
+  names.forEach(name => {
+    const p = projects[name];
+    const div = document.createElement('div');
+    div.className = 'project-item';
+
+    let html = `<div style="display:flex;align-items:center;">`;
+    html += `<div class="project-item-name">${escHtml(name)}</div>`;
+    html += `<div class="project-actions"><button onclick="event.stopPropagation();deleteProject('${escHtml(name)}')" title="Usuń projekt">🗑</button></div>`;
+    html += `</div>`;
+    html += `<div class="project-item-meta">${p.versions.length} wersji</div>`;
+    html += `<div class="project-versions">`;
+    p.versions.forEach((v, i) => {
+      html += `<span class="version-chip" onclick="event.stopPropagation();loadVersion('${escHtml(name)}',${i})" title="${v.date}">v${v.v} · ${v.date}</span>`;
+      html += `<button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;padding:0 2px;" onclick="event.stopPropagation();deleteVersion('${escHtml(name)}',${i})" title="Usuń wersję">✕</button>`;
+    });
+    html += `</div>`;
+    div.innerHTML = html;
+    list.appendChild(div);
+  });
 }
 
 function onResume() {
@@ -1746,24 +1973,31 @@ const EXAMPLES = {
   ],
   countdown: [
     { type: 'start', vals: {} },
-    { type: 'say', vals: { text: 'Uwaga! Odliczam...' } },
-    { type: 'wait', vals: { secs: '1' } },
-    { type: 'say', vals: { text: '3...' } },
-    { type: 'wait', vals: { secs: '1' } },
-    { type: 'say', vals: { text: '2...' } },
-    { type: 'wait', vals: { secs: '1' } },
-    { type: 'say', vals: { text: '1...' } },
-    { type: 'wait', vals: { secs: '1' } },
+    { type: 'set-var', vals: { name: 'licznik', value: '5' } },
+    { type: 'say', vals: { text: 'Uwaga! Odliczam od {licznik}...' } },
+    { type: 'repeat', vals: { times: '5' } },
+    { type: 'group', vals: { name: 'odliczanie' }, children: [
+      { type: 'say', vals: { text: '{licznik}...' } },
+      { type: 'change-var', vals: { name: 'licznik', delta: '-1' } },
+      { type: 'wait', vals: { secs: '1' } },
+    ]},
     { type: 'say', vals: { text: '🚀 START! Rakieta wystartowała!' } },
   ],
   story: [
     { type: 'start', vals: {} },
-    { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny' } },
-    { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
-    { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat, astronauta' } },
-    { type: 'set-var', vals: { name: 'kto', value: '{_random}' } },
-    { type: 'if-random', vals: { options: 'poszedł na lody, poleciał na Marsa, znalazł skarb, nauczył się latać' } },
-    { type: 'say', vals: { text: '{jaki} {kto} {_random}!' } },
+    { type: 'set-var', vals: { name: 'ile', value: '0' } },
+    { type: 'say', vals: { text: 'Generuję 3 śmieszne zdania!' } },
+    { type: 'repeat', vals: { times: '3' } },
+    { type: 'group', vals: { name: 'generuj zdanie' }, children: [
+      { type: 'change-var', vals: { name: 'ile', delta: '1' } },
+      { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny, Latający' } },
+      { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
+      { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat, astronauta' } },
+      { type: 'set-var', vals: { name: 'kto', value: '{_random}' } },
+      { type: 'if-random', vals: { options: 'poszedł na lody, poleciał na Marsa, znalazł skarb, nauczył się latać' } },
+      { type: 'say', vals: { text: '{ile}. {jaki} {kto} {_random}!' } },
+    ]},
+    { type: 'say', vals: { text: 'Wygenerowano {ile} zdań!' } },
   ],
   quiz: [
     { type: 'start', vals: {} },
