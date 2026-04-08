@@ -928,7 +928,7 @@ async function executeBlocks(blks, startIdx) {
 }
 
 function interpolateVars(text) {
-  return text.replace(/\{(\w+)\}/g, (_, name) => variables[name] !== undefined ? variables[name] : `{${name}}`);
+  return text.replace(/\{([^}]+)\}/g, (m, name) => variables[name] !== undefined ? variables[name] : m);
 }
 
 function sleep(ms) {
