@@ -562,6 +562,7 @@
   .b-if       { background: #3a2d1f; color: #ffb347; border-color: #ff9f1c; }
   .b-var      { background: #1f3a2d; color: #6bffb8; border-color: #6bcb77; }
   .b-sound    { background: #3a1f4a; color: #e0b3ff; border-color: #c77dff; }
+  .b-math     { background: #1f3a3a; color: #66ddcc; border-color: #33bbaa; }
 
   /* ── SCROLLBAR ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -728,6 +729,17 @@
       👁 Pokaż zmienną: <em style="opacity:.6">nazwa</em>
     </div>
 
+    <h3>📐 Matematyka</h3>
+    <div class="block-template b-math" draggable="true" data-type="change-var">
+      ➕ Zmień zmienną o: <em style="opacity:.6">1</em>
+    </div>
+    <div class="block-template b-math" draggable="true" data-type="math-set">
+      📐 Oblicz: <em style="opacity:.6">{x} + {y} * 2</em>
+    </div>
+    <div class="block-template b-math" draggable="true" data-type="random-num">
+      🎯 Losowa liczba: <em style="opacity:.6">1 - 6</em>
+    </div>
+
     <h3>⏸ Pauza</h3>
     <div class="block-template b-debug" draggable="true" data-type="debug-stop">
       ⏸ Pauza: <em style="opacity:.6">checkpoint</em>
@@ -775,6 +787,11 @@
             <div class="ex-icon">📎</div>
             <div class="ex-title">Quiz zwierzęcy</div>
             <div class="ex-desc">Grupa + Powtórz = 3 rundy quizu!</div>
+          </div>
+          <div class="example-card" onclick="loadExample('mathDemo')">
+            <div class="ex-icon">🎲</div>
+            <div class="ex-title">Gra w kości</div>
+            <div class="ex-desc">Rzuć 3x kostką, licz punkty i średnią!</div>
           </div>
           <div class="example-card" onclick="loadExample('ifElseDemo')">
             <div class="ex-icon">❓</div>
@@ -828,6 +845,9 @@ const BLOCK_DEFS = {
   'if-random':  { label: '🎲 Losowo jeden z:', cls: 'b-if', inputs: [{ key: 'options', placeholder: 'pies, kot, ryba' }] },
   'set-var':    { label: '📦 Ustaw zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }, { key: 'value', placeholder: 'Zosia' }] },
   'show-var':   { label: '👁 Pokaż zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }] },
+  'change-var': { label: '➕ Zmień zmienną:', cls: 'b-math', inputs: [{ key: 'name', placeholder: 'punkty' }, { key: 'delta', placeholder: '1' }] },
+  'math-set':   { label: '📐 Oblicz:', cls: 'b-math', inputs: [{ key: 'name', placeholder: 'wynik' }, { key: 'expr', placeholder: '{x} + {y} * 2' }] },
+  'random-num': { label: '🎯 Losowa liczba:', cls: 'b-math', inputs: [{ key: 'name', placeholder: 'kostka' }, { key: 'min', placeholder: '1' }, { key: 'max', placeholder: '6' }] },
   'group':      { label: '📎 Grupa', cls: 'b-group', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
   'if-else':    { label: '❓ Jeżeli', cls: 'b-if-else', inputs: [], isIfElse: true },
   'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
@@ -1508,6 +1528,41 @@ async function executeBlocks(blks, startIdx) {
         break;
       }
 
+      case 'change-var': {
+        const name = vals.name || 'x';
+        const delta = evalMath(vals.delta || '1');
+        const current = Number(variables[name]) || 0;
+        const result = current + delta;
+        variables[name] = result;
+        log(`➕ ${name}: ${current} + ${delta} = ${result}`, 'info');
+        clog(`  ➕ ${name}: ${current} + ${delta} = ${result}`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'math-set': {
+        const name = vals.name || 'wynik';
+        const expr = vals.expr || '0';
+        const result = evalMath(expr);
+        variables[name] = result;
+        log(`📐 ${name} = ${interpolateVars(expr)} = ${result}`, 'info');
+        clog(`  📐 ${name} = ${expr} → ${result}`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'random-num': {
+        const name = vals.name || 'liczba';
+        const min = parseInt(interpolateVars(vals.min || '1')) || 1;
+        const max = parseInt(interpolateVars(vals.max || '6')) || 6;
+        const result = Math.floor(Math.random() * (max - min + 1)) + min;
+        variables[name] = result;
+        log(`🎯 ${name} = ${result} (${min}–${max})`, 'info');
+        clog(`  🎯 losowa ${min}–${max} → ${result}`);
+        updateVarsPanel();
+        break;
+      }
+
       case 'debug-stop': {
         const msg = interpolateVars(vals.msg || 'breakpoint');
         log(`⏸ PAUZA: ${msg} — kliknij "Kontynuuj" aby wznowić`, 'debug');
@@ -1624,6 +1679,44 @@ function interpolateVars(text) {
   return text.replace(/\{([^}]+)\}/g, (m, name) => variables[name] !== undefined ? variables[name] : m);
 }
 
+function evalMath(expr) {
+  // first interpolate variables
+  const resolved = interpolateVars(expr);
+  // tokenize: numbers (incl. negative), operators, parens
+  const tokens = resolved.match(/-?\d+(\.\d+)?|[+\-*/()%]/g);
+  if (!tokens) return NaN;
+  // simple recursive descent parser
+  let pos = 0;
+  function peek() { return tokens[pos]; }
+  function next() { return tokens[pos++]; }
+  function parseExpr() {
+    let val = parseTerm();
+    while (peek() === '+' || peek() === '-') {
+      const op = next();
+      const right = parseTerm();
+      val = op === '+' ? val + right : val - right;
+    }
+    return val;
+  }
+  function parseTerm() {
+    let val = parseFactor();
+    while (peek() === '*' || peek() === '/' || peek() === '%') {
+      const op = next();
+      const right = parseFactor();
+      if (op === '*') val *= right;
+      else if (op === '/') val = right !== 0 ? val / right : NaN;
+      else val = right !== 0 ? val % right : NaN;
+    }
+    return val;
+  }
+  function parseFactor() {
+    if (peek() === '(') { next(); const val = parseExpr(); next(); return val; }
+    return parseFloat(next()) || 0;
+  }
+  const result = parseExpr();
+  return Number.isInteger(result) ? result : Math.round(result * 1000) / 1000;
+}
+
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
@@ -1708,6 +1801,29 @@ const EXAMPLES = {
       elseChildren: [],
     },
     { type: 'say', vals: { text: 'Koniec sprawdzania!' } },
+  ],
+  mathDemo: [
+    { type: 'start', vals: {} },
+    { type: 'set-var', vals: { name: 'punkty', value: '0' } },
+    { type: 'say', vals: { text: 'Gra w kości! 3 rzuty.' } },
+    { type: 'repeat', vals: { times: '3' } },
+    { type: 'group', vals: { name: 'rzut kostką' }, children: [
+      { type: 'random-num', vals: { name: 'kostka', min: '1', max: '6' } },
+      { type: 'say', vals: { text: '🎲 Wyrzuciłeś: {kostka}' } },
+      { type: 'change-var', vals: { name: 'punkty', delta: '{kostka}' } },
+      { type: 'wait', vals: { secs: '1' } },
+    ]},
+    { type: 'say', vals: { text: 'Suma punktów: {punkty}' } },
+    { type: 'math-set', vals: { name: 'średnia', expr: '{punkty} / 3' } },
+    { type: 'say', vals: { text: 'Średnia: {średnia}' } },
+    { type: 'if-else', vals: { left: '{punkty}', op: '>', right: '12' },
+      children: [
+        { type: 'say', vals: { text: '🏆 Świetny wynik!' } },
+      ],
+      elseChildren: [
+        { type: 'say', vals: { text: '💪 Następnym razem będzie lepiej!' } },
+      ],
+    },
   ],
 };
 
