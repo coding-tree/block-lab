@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Block Lab — Coding Tree</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #09090f;
+  --bg2:     #0f0f1a;
+  --bg3:     #16162a;
+  --border:  #2a2a4a;
+  --border2: #3a3a6a;
+  --text:    #e8e8f0;
+  --muted:   #6060a0;
+  --green:   #00ff88;
+  --blue:    #4488ff;
+  --orange:  #ffaa00;
+  --pink:    #ff55ff;
+  --cyan:    #00ffff;
+  --font:    'Outfit', sans-serif;
+  --mono:    'DM Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+header {
+  text-align: center;
+  padding: 60px 20px 40px;
+}
+
+header h1 {
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  margin-bottom: 8px;
+}
+header h1 .block { color: var(--green); }
+header h1 .lab { color: var(--blue); }
+
+header p {
+  font-size: 15px;
+  color: var(--muted);
+  max-width: 520px;
+  line-height: 1.6;
+}
+
+header .badge {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--mono);
+  color: var(--orange);
+  border: 1px solid var(--orange);
+  border-radius: 20px;
+  opacity: .8;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  max-width: 900px;
+  width: 100%;
+  padding: 0 24px 60px;
+}
+
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color .2s, transform .2s;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+}
+
+.card:hover {
+  border-color: var(--border2);
+  transform: translateY(-3px);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+
+.card[data-accent="green"]::before  { background: var(--green); }
+.card[data-accent="blue"]::before   { background: var(--blue); }
+.card[data-accent="pink"]::before   { background: var(--pink); }
+.card[data-accent="orange"]::before { background: var(--orange); }
+
+.card .version {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 6px;
+  align-self: flex-start;
+}
+
+.card[data-accent="green"] .version  { color: var(--green); background: #00ff8812; }
+.card[data-accent="blue"] .version   { color: var(--blue); background: #4488ff12; }
+.card[data-accent="pink"] .version   { color: var(--pink); background: #ff55ff12; }
+.card[data-accent="orange"] .version { color: var(--orange); background: #ffaa0012; }
+
+.card h2 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.3px;
+}
+
+.card .desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+  flex: 1;
+}
+
+.card .features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.card .features span {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.card .status {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+footer {
+  padding: 30px 20px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+
+footer a {
+  color: var(--green);
+  text-decoration: none;
+}
+footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="block">Block</span><span class="lab">Lab</span></h1>
+  <p>Wizualne środowisko programowania dla dzieci oparte na modelu aktorów z Erlanga. Aktorzy, wiadomości, supervisory — jak w OTP, ale z blokami.</p>
+  <div class="badge">Coding Tree — Kołobrzeg</div>
+</header>
+
+<div class="grid">
+
+  <a class="card" href="actor-scratch-v1.html" data-accent="green">
+    <span class="version">v1 — current</span>
+    <h2>ActorScratch</h2>
+    <p class="desc">Pełna implementacja środowiska z drzewem supervisorów, sceną, edytorem bloków i runtime z tick-loop.</p>
+    <div class="features">
+      <span>actor model</span>
+      <span>supervisor tree</span>
+      <span>game loop</span>
+      <span>prezentacja</span>
+      <span>animowane msg</span>
+    </div>
+    <div class="status" style="color: var(--green);">⬢ Główny plik</div>
+  </a>
+
+  <a class="card" href="ai-block-studio.html" data-accent="blue">
+    <span class="version">prototype</span>
+    <h2>AI Block Studio</h2>
+    <p class="desc">MakeCode-style dual editor z przełączaniem bloki ↔ kod, nagrywarką sesji i integracją z API Anthropic.</p>
+    <div class="features">
+      <span>bloki ↔ kod</span>
+      <span>nagrywarka</span>
+      <span>odtwarzacz</span>
+      <span>AI → bloki</span>
+    </div>
+    <div class="status" style="color: var(--blue);">◆ Feature reference</div>
+  </a>
+
+  <a class="card" href="ai-scratch-v2.html" data-accent="pink">
+    <span class="version">v2</span>
+    <h2>AI Scratch v2</h2>
+    <p class="desc">Wersja pośrednia — AI generuje kod blokowy z opisu po polsku. Poprawki UX względem v1.</p>
+    <div class="features">
+      <span>AI → bloki</span>
+      <span>polski NLP</span>
+    </div>
+    <div class="status" style="color: var(--pink);">◇ Iteracja</div>
+  </a>
+
+  <a class="card" href="ai-scratch.html" data-accent="orange">
+    <span class="version">v1 — poc</span>
+    <h2>AI Scratch</h2>
+    <p class="desc">Najwcześniejszy proof-of-concept — Scratch-like bloki + Claude API. Efekt maszyny do pisania, interpolacja zmiennych.</p>
+    <div class="features">
+      <span>scratch blocks</span>
+      <span>claude api</span>
+      <span>typewriter fx</span>
+      <span>zmienne</span>
+    </div>
+    <div class="status" style="color: var(--orange);">○ Archiwum</div>
+  </a>
+
+</div>
+
+<footer>
+  <a href="https://github.com/coding-tree/block-lab">github.com/coding-tree/block-lab</a> · block-lab.codingtree.pl
+</footer>
+
+</body>
+</html>

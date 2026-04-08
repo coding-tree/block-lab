@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Block Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d1117;
+  --s1: #161b22;
+  --s2: #21262d;
+  --s3: #30363d;
+  --border: #3d444d;
+  --text: #e6edf3;
+  --muted: #7d8590;
+  --green: #3fb950;
+  --blue: #58a6ff;
+  --purple: #bc8cff;
+  --orange: #ffa657;
+  --red: #f85149;
+  --yellow: #e3b341;
+  --cyan: #39d353;
+  --r: 8px;
+  --font-ui: 'Syne', sans-serif;
+  --font-code: 'JetBrains Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: var(--font-ui); background: var(--bg); color: var(--text); display: flex; flex-direction: column; font-size: 13px; }
+
+/* ═══ TOOLBAR ═══ */
+#toolbar {
+  height: 44px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  z-index: 50;
+}
+.tb-logo {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  margin-right: 8px;
+  letter-spacing: -.3px;
+}
+.tb-logo span { color: var(--blue); }
+
+.tb-sep { width: 1px; height: 24px; background: var(--border); margin: 0 6px; }
+
+.tb-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--s2);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.tb-btn:hover { background: var(--s3); border-color: #666; }
+.tb-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+.tb-btn.green { background: var(--green); border-color: var(--green); color: #000; font-weight: 700; }
+.tb-btn.green:hover { opacity: .9; }
+.tb-btn.red { background: var(--red); border-color: var(--red); color: #fff; }
+.tb-btn.red:hover { opacity: .9; }
+
+.mode-toggle {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.mode-toggle .tb-btn {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.mode-toggle .tb-btn.active { background: var(--s3); }
+
+.tb-spacer { flex: 1; }
+
+.rec-indicator {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  color: var(--red);
+  font-weight: 700;
+  font-size: 12px;
+}
+.rec-indicator.on { display: flex; }
+.rec-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red);
+  animation: pulse-dot .8s ease-in-out infinite;
+}
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+/* ═══ MAIN LAYOUT ═══ */
+#main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 200px 1fr 280px;
+  overflow: hidden;
+}
+
+/* ═══ BLOCK PALETTE ═══ */
+#palette {
+  background: var(--s1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#palette-header {
+  padding: 10px 12px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#palette-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cat-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 8px 4px 4px;
+  color: var(--muted);
+}
+
+.pal-block {
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: grab;
+  user-select: none;
+  display: flex; align-items: center; gap: 6px;
+  transition: transform .1s, box-shadow .1s;
+  border: 1px solid transparent;
+}
+.pal-block:hover { transform: translateX(3px); }
+.pal-block:active { cursor: grabbing; opacity: .7; }
+
+/* ═══ CANVAS AREA ═══ */
+#editor-area {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* BLOCK VIEW */
+#block-view {
+  position: absolute; inset: 0;
+  overflow: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+#block-view.hidden { display: none; }
+
+.block-stack {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 320px;
+  position: relative;
+}
+
+.canvas-block {
+  position: relative;
+  border-radius: 0;
+  padding: 8px 12px 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  user-select: none;
+  border-left: 3px solid transparent;
+  border-top: 1px solid transparent;
+  transition: background .1s;
+  min-height: 38px;
+}
+.canvas-block:first-child { border-radius: 8px 8px 0 0; }
+.canvas-block:last-child { border-radius: 0 0 8px 8px; }
+.canvas-block:only-child { border-radius: 8px; }
+.canvas-block:hover { filter: brightness(1.15); }
+.canvas-block.dragging { opacity: .35; }
+.canvas-block.drop-target { outline: 2px dashed var(--blue); outline-offset: -2px; }
+
+.block-notch {
+  position: absolute;
+  left: 22px; top: -5px;
+  width: 20px; height: 10px;
+  border-radius: 3px 3px 0 0;
+  background: inherit;
+}
+.canvas-block:first-child .block-notch { display: none; }
+
+.block-field {
+  background: #00000030;
+  border: 1px solid #ffffff25;
+  border-radius: 5px;
+  padding: 2px 7px;
+  color: #fff;
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 500;
+  min-width: 60px;
+  max-width: 140px;
+  outline: none;
+  cursor: text;
+}
+.block-field:focus { border-color: #ffffff55; background: #ffffff15; }
+
+.block-rm {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #ffffff30;
+  cursor: pointer;
+  font-size: 14px;
+  width: 20px; height: 20px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .1s, background .1s;
+  flex-shrink: 0;
+}
+.block-rm:hover { color: var(--red); background: #f8514920; }
+
+/* Canvas empty hint */
+#canvas-hint {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--s3);
+  pointer-events: none;
+  font-size: 13px;
+  line-height: 1.7;
+}
+#canvas-hint svg { display: block; margin: 0 auto 12px; }
+
+/* Drop zones */
+.dropzone {
+  height: 6px;
+  border-radius: 3px;
+  transition: height .15s, background .15s;
+}
+.dropzone.hover { height: 24px; background: #58a6ff30; border: 2px dashed var(--blue); }
+
+/* CODE VIEW */
+#code-view {
+  position: absolute; inset: 0;
+  overflow: auto;
+  background: var(--bg);
+  font-family: var(--font-code);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 20px;
+  outline: none;
+  color: var(--text);
+  white-space: pre;
+}
+#code-view.hidden { display: none; }
+
+/* Syntax highlighting done via spans */
+.tok-kw { color: #ff7b72; }
+.tok-fn { color: #d2a8ff; }
+.tok-str { color: var(--orange); }
+.tok-num { color: var(--blue); }
+.tok-cmt { color: var(--muted); font-style: italic; }
+.tok-var { color: #79c0ff; }
+
+/* ═══ TIMELINE / PLAYBACK ═══ */
+#timeline-panel {
+  background: var(--s1);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#timeline-header {
+  padding: 10px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+}
+#timeline-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tl-frame {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  transition: border-color .1s, background .1s;
+  font-size: 11px;
+}
+.tl-frame:hover { border-color: var(--blue); }
+.tl-frame.active { border-color: var(--blue); background: #58a6ff15; }
+.tl-frame.playing { border-color: var(--green); background: #3fb95015; }
+.tl-num {
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--muted);
+  min-width: 22px;
+}
+.tl-icon { font-size: 14px; }
+.tl-desc { flex: 1; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-time { font-family: var(--font-code); font-size: 10px; color: var(--muted); }
+
+.tl-empty { color: var(--muted); font-size: 12px; padding: 20px; text-align: center; line-height: 1.7; }
+
+/* Playback controls */
+#playback-bar {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.pb-btn {
+  width: 30px; height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--s2);
+  color: var(--text);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  transition: all .1s;
+}
+.pb-btn:hover { background: var(--s3); }
+.pb-btn.play { background: var(--green); border-color: var(--green); color: #000; }
+#pb-progress {
+  flex: 1;
+  height: 4px;
+  background: var(--s3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#pb-fill {
+  height: 100%;
+  background: var(--blue);
+  width: 0%;
+  transition: width .15s;
+}
+.pb-speed {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+/* ═══ CURSOR GHOST ═══ */
+#cursor-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  display: none;
+  width: 20px;
+  height: 20px;
+  transition: left .12s cubic-bezier(.25,.1,.25,1), top .12s cubic-bezier(.25,.1,.25,1);
+}
+#cursor-ghost svg { filter: drop-shadow(0 2px 6px #000a); }
+
+/* ═══ SIMULATED BLOCK GHOST ═══ */
+#block-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9998;
+  display: none;
+  opacity: .8;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: left .12s, top .12s;
+  box-shadow: 0 8px 30px #0009;
+}
+
+/* ═══ STATUSBAR ═══ */
+#statusbar {
+  height: 24px;
+  background: var(--s1);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+  font-family: var(--font-code);
+}
+.sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+/* ═══ SCROLLBAR ═══ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ═══ TOAST ═══ */
+#toast {
+  position: fixed;
+  bottom: 36px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transition: all .2s;
+  pointer-events: none;
+  z-index: 1000;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Block color scheme */
+.bc-control { background: #1f3a2d; border-left-color: var(--green) !important; color: #7ee787; }
+.bc-motion  { background: #1f2d3a; border-left-color: var(--blue) !important; color: #79c0ff; }
+.bc-ai      { background: #2d1f3a; border-left-color: var(--purple) !important; color: #d2a8ff; }
+.bc-looks   { background: #3a2d1f; border-left-color: var(--orange) !important; color: #ffa657; }
+.bc-data    { background: #3a1f1f; border-left-color: var(--red) !important; color: #ffa198; }
+
+/* ═══ API MODAL ═══ */
+#api-modal {
+  position: fixed; inset: 0;
+  background: #000a;
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+}
+#api-modal.hidden { display: none; }
+.modal-box {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  width: 420px;
+  max-width: 95vw;
+}
+.modal-box h2 { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+.modal-box p { color: var(--muted); font-size: 12px; line-height: 1.7; margin-bottom: 18px; }
+.modal-box input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: var(--font-code);
+  font-size: 12px;
+  outline: none;
+  margin-bottom: 12px;
+}
+.modal-box input:focus { border-color: var(--blue); }
+.modal-row { display: flex; gap: 8px; }
+.modal-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--s2);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.modal-btn.primary { background: var(--blue); border-color: var(--blue); color: #000; }
+.modal-btn:hover { opacity: .9; }
+</style>
+</head>
+<body>
+
+<!-- CURSOR GHOST -->
+<div id="cursor-ghost">
+  <svg width="20" height="24" viewBox="0 0 20 24">
+    <path d="M0 0 L0 18 L5 13 L8 20 L10.5 19 L7.5 12 L14 12 Z" fill="white" stroke="#333" stroke-width="1.2"/>
+  </svg>
+</div>
+<div id="block-ghost"></div>
+
+<!-- API MODAL -->
+<div id="api-modal">
+  <div class="modal-box">
+    <h2>🔑 Klucz API Anthropic</h2>
+    <p>Potrzebny do bloków AI (generowanie kodu, wyjaśnienia). Bez klucza reszta edytora działa normalnie.</p>
+    <input type="password" id="api-input" placeholder="sk-ant-api03-..." autocomplete="off">
+    <div class="modal-row">
+      <button class="modal-btn" onclick="skipAPI()">Pomiń</button>
+      <button class="modal-btn primary" onclick="saveAPI()">Zapisz →</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <span class="tb-logo"><span>⬡</span> BlockStudio</span>
+  <div class="tb-sep"></div>
+  <div class="mode-toggle">
+    <button class="tb-btn active" id="btn-blocks" onclick="setMode('blocks')">⬡ Bloki</button>
+    <button class="tb-btn" id="btn-code" onclick="setMode('code')">{ } Kod</button>
+  </div>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-rec" onclick="toggleRecord()">⏺ Nagraj</button>
+  <button class="tb-btn" id="btn-play" onclick="playSession()" style="display:none">▶ Odtwórz</button>
+  <button class="tb-btn" id="btn-export" onclick="exportGIF()" style="display:none">⤓ GIF</button>
+  <div class="rec-indicator" id="rec-ind">
+    <div class="rec-dot"></div> REC
+  </div>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="generateFromAI()">✦ AI → Bloki</button>
+  <button class="tb-btn green" onclick="runProgram()">▶ Uruchom</button>
+  <div class="tb-spacer"></div>
+  <span style="font-size:11px; color:var(--muted); font-family:var(--font-code)">
+    <span id="api-status" style="color:var(--muted)">○ brak klucza</span>
+  </span>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- PALETTE -->
+  <div id="palette">
+    <div id="palette-header">Bloki</div>
+    <div id="palette-scroll"></div>
+  </div>
+
+  <!-- EDITOR -->
+  <div id="editor-area"
+    ondragover="onCanvasDragOver(event)"
+    ondrop="onCanvasDrop(event)">
+    <div id="canvas-hint">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+        <rect x="4" y="14" width="40" height="10" rx="5" fill="#3d444d"/>
+        <rect x="4" y="28" width="40" height="10" rx="5" fill="#30363d"/>
+        <rect x="14" y="9" width="20" height="10" rx="5" fill="#3d444d"/>
+      </svg>
+      Przeciągnij bloki z panelu<br>lub użyj <strong>✦ AI → Bloki</strong>
+    </div>
+    <div id="block-view"></div>
+    <div id="code-view" contenteditable="true" spellcheck="false" class="hidden" oninput="onCodeEdit()"></div>
+  </div>
+
+  <!-- TIMELINE -->
+  <div id="timeline-panel">
+    <div id="timeline-header">
+      <span>Nagranie sesji</span>
+      <button class="tb-btn" style="height:22px;font-size:10px;padding:0 8px" onclick="clearSession()">Wyczyść</button>
+    </div>
+    <div id="timeline-scroll">
+      <div class="tl-empty">Naciśnij ⏺ Nagraj<br>a każda akcja zostanie<br>nagrana jak klatka animacji.</div>
+    </div>
+    <div id="playback-bar">
+      <button class="pb-btn" onclick="stepBack()">⏮</button>
+      <button class="pb-btn play" id="pb-play-btn" onclick="togglePlayback()">▶</button>
+      <button class="pb-btn" onclick="stepForward()">⏭</button>
+      <div id="pb-progress"><div id="pb-fill"></div></div>
+      <select class="pb-speed" id="pb-speed">
+        <option value="2000">0.5×</option>
+        <option value="1000" selected>1×</option>
+        <option value="500">2×</option>
+        <option value="200">5×</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- STATUSBAR -->
+<div id="statusbar">
+  <div class="sb-dot"></div>
+  <span id="sb-mode">Tryb: Bloki</span>
+  <span>|</span>
+  <span id="sb-blocks">0 bloków</span>
+  <span>|</span>
+  <span id="sb-frames">0 klatek</span>
+  <span>|</span>
+  <span id="sb-cursor">Gotowy</span>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════
+let state = {
+  mode: 'blocks',      // 'blocks' | 'code'
+  blocks: [],          // [{id, type, fields:{}}]
+  recording: false,
+  session: [],         // [{t, action, data, snapshot}]
+  playhead: -1,
+  playing: false,
+  playTimer: null,
+  dragId: null,
+  dragFromPalette: null,
+  apiKey: '',
+  counter: 0,
+  recStart: 0,
+};
+
+// ═══════════════════════════════════════════════
+//  BLOCK DEFINITIONS
+// ═══════════════════════════════════════════════
+const CATS = [
+  { name: 'Sterowanie', color: 'bc-control', blocks: [
+    { type: 'on_start',   icon: '🚩', label: 'po uruchomieniu', fields: [] },
+    { type: 'repeat',     icon: '🔁', label: 'powtórz', fields: [{k:'n',ph:'3',w:40}], suffix: 'razy' },
+    { type: 'wait',       icon: '⏱', label: 'czekaj', fields: [{k:'ms',ph:'500',w:50}], suffix: 'ms' },
+    { type: 'if_true',    icon: '❓', label: 'jeżeli', fields: [{k:'cond',ph:'x > 0',w:80}] },
+  ]},
+  { name: 'Dane', color: 'bc-data', blocks: [
+    { type: 'set_var',    icon: '📦', label: 'ustaw', fields: [{k:'name',ph:'x',w:45}], mid: '=', fields2: [{k:'val',ph:'0',w:60}] },
+    { type: 'print',      icon: '🖨',  label: 'wypisz', fields: [{k:'val',ph:'tekst',w:100}] },
+    { type: 'input',      icon: '⌨️', label: 'wczytaj do', fields: [{k:'name',ph:'x',w:60}] },
+  ]},
+  { name: 'Wygląd', color: 'bc-looks', blocks: [
+    { type: 'set_title',  icon: '📛', label: 'tytuł:', fields: [{k:'text',ph:'Mój program',w:120}] },
+    { type: 'set_color',  icon: '🎨', label: 'kolor tła:', fields: [{k:'color',ph:'#1a1826',w:80}] },
+    { type: 'show_img',   icon: '🖼', label: 'pokaż obraz:', fields: [{k:'url',ph:'url...',w:120}] },
+  ]},
+  { name: '🤖 AI', color: 'bc-ai', blocks: [
+    { type: 'ai_gen',     icon: '✦', label: 'AI generuj kod:', fields: [{k:'prompt',ph:'zrób pętlę...',w:140}] },
+    { type: 'ai_ask',     icon: '💬', label: 'AI zapytaj:', fields: [{k:'q',ph:'Co to jest...',w:140}] },
+    { type: 'ai_explain', icon: '💡', label: 'AI wyjaśnij blok', fields: [] },
+  ]},
+];
+
+const BLOCK_MAP = {};
+CATS.forEach(cat => cat.blocks.forEach(b => { BLOCK_MAP[b.type] = { ...b, catColor: cat.color }; }));
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+function init() {
+  buildPalette();
+  renderAll();
+}
+
+function buildPalette() {
+  const scroll = document.getElementById('palette-scroll');
+  scroll.innerHTML = '';
+  CATS.forEach(cat => {
+    const lbl = document.createElement('div');
+    lbl.className = 'cat-label';
+    lbl.textContent = cat.name;
+    scroll.appendChild(lbl);
+    cat.blocks.forEach(bd => {
+      const el = document.createElement('div');
+      el.className = `pal-block ${cat.color}`;
+      el.draggable = true;
+      el.innerHTML = `${bd.icon} ${bd.label}`;
+      el.dataset.type = bd.type;
+      el.addEventListener('dragstart', e => {
+        state.dragFromPalette = bd.type;
+        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData('text/plain', bd.type);
+      });
+      el.addEventListener('click', () => {
+        addBlock(bd.type);
+        recordAction('add_block', { type: bd.type });
+      });
+      scroll.appendChild(el);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  BLOCKS CRUD
+// ═══════════════════════════════════════════════
+function addBlock(type, fields = {}, insertAt = -1) {
+  const def = BLOCK_MAP[type];
+  if (!def) return;
+  const id = ++state.counter;
+  const allFields = [...(def.fields || []), ...(def.fields2 || [])];
+  const f = {};
+  allFields.forEach(fd => f[fd.k] = fields[fd.k] !== undefined ? fields[fd.k] : '');
+  const block = { id, type, fields: f };
+  if (insertAt >= 0 && insertAt < state.blocks.length) {
+    state.blocks.splice(insertAt, 0, block);
+  } else {
+    state.blocks.push(block);
+  }
+  renderAll();
+  updateStatus();
+  return id;
+}
+
+function removeBlock(id) {
+  const idx = state.blocks.findIndex(b => b.id === id);
+  if (idx === -1) return;
+  state.blocks.splice(idx, 1);
+  recordAction('remove_block', { id });
+  renderAll();
+  updateStatus();
+}
+
+function updateField(id, key, val) {
+  const b = state.blocks.find(b => b.id === id);
+  if (b) {
+    b.fields[key] = val;
+    if (state.mode === 'code') syncCodeFromBlocks();
+  }
+  recordAction('edit_field', { id, key, val });
+}
+
+function moveBlock(fromIdx, toIdx) {
+  if (fromIdx === toIdx) return;
+  const [b] = state.blocks.splice(fromIdx, 1);
+  state.blocks.splice(toIdx, 0, b);
+  recordAction('move_block', { fromIdx, toIdx });
+  renderAll();
+  updateStatus();
+}
+
+// ═══════════════════════════════════════════════
+//  RENDER BLOCKS
+// ═══════════════════════════════════════════════
+function renderAll() {
+  renderBlocks();
+  if (state.mode === 'code') syncCodeFromBlocks();
+  document.getElementById('canvas-hint').style.display = state.blocks.length ? 'none' : '';
+}
+
+function renderBlocks() {
+  const view = document.getElementById('block-view');
+  view.innerHTML = '';
+  const stack = document.createElement('div');
+  stack.className = 'block-stack';
+
+  state.blocks.forEach((block, idx) => {
+    // drop zone above
+    const dz = makeDropzone(idx);
+    stack.appendChild(dz);
+
+    const def = BLOCK_MAP[block.type];
+    if (!def) return;
+
+    const el = document.createElement('div');
+    el.className = `canvas-block ${def.catColor}`;
+    el.dataset.id = block.id;
+    el.dataset.idx = idx;
+
+    // Notch
+    const notch = document.createElement('div');
+    notch.className = 'block-notch';
+    notch.style.background = getBlockBg(def.catColor);
+    el.appendChild(notch);
+
+    // Icon + label
+    const iconSpan = document.createElement('span');
+    iconSpan.textContent = def.icon + ' ' + def.label;
+    iconSpan.style.pointerEvents = 'none';
+    el.appendChild(iconSpan);
+
+    // Fields
+    (def.fields || []).forEach(fd => {
+      const inp = document.createElement('input');
+      inp.className = 'block-field';
+      inp.value = block.fields[fd.k] || '';
+      inp.placeholder = fd.ph;
+      inp.style.width = (fd.w || 80) + 'px';
+      inp.onclick = e => e.stopPropagation();
+      inp.oninput = e => { updateField(block.id, fd.k, e.target.value); };
+      el.appendChild(inp);
+    });
+
+    if (def.mid) {
+      const m = document.createElement('span');
+      m.textContent = def.mid;
+      m.style.opacity = '.6';
+      el.appendChild(m);
+    }
+
+    (def.fields2 || []).forEach(fd => {
+      const inp = document.createElement('input');
+      inp.className = 'block-field';
+      inp.value = block.fields[fd.k] || '';
+      inp.placeholder = fd.ph;
+      inp.style.width = (fd.w || 80) + 'px';
+      inp.onclick = e => e.stopPropagation();
+      inp.oninput = e => { updateField(block.id, fd.k, e.target.value); };
+      el.appendChild(inp);
+    });
+
+    if (def.suffix) {
+      const s = document.createElement('span');
+      s.textContent = def.suffix;
+      s.style.opacity = '.6';
+      el.appendChild(s);
+    }
+
+    // Remove btn
+    const rm = document.createElement('button');
+    rm.className = 'block-rm';
+    rm.innerHTML = '✕';
+    rm.title = 'Usuń blok';
+    rm.onclick = e => { e.stopPropagation(); removeBlock(block.id); };
+    el.appendChild(rm);
+
+    // Drag to reorder
+    el.draggable = true;
+    el.addEventListener('dragstart', e => {
+      state.dragId = idx;
+      state.dragFromPalette = null;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => el.classList.add('dragging'), 0);
+    });
+    el.addEventListener('dragend', () => el.classList.remove('dragging'));
+
+    stack.appendChild(el);
+  });
+
+  // last drop zone
+  const dzLast = makeDropzone(state.blocks.length);
+  stack.appendChild(dzLast);
+
+  view.appendChild(stack);
+}
+
+function makeDropzone(idx) {
+  const dz = document.createElement('div');
+  dz.className = 'dropzone';
+  dz.dataset.dropIdx = idx;
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('hover'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('hover'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault();
+    dz.classList.remove('hover');
+    handleBlockDrop(idx);
+  });
+  return dz;
+}
+
+function getBlockBg(cls) {
+  const map = { 'bc-control': '#1f3a2d', 'bc-motion': '#1f2d3a', 'bc-ai': '#2d1f3a', 'bc-looks': '#3a2d1f', 'bc-data': '#3a1f1f' };
+  return map[cls] || '#222';
+}
+
+// ═══════════════════════════════════════════════
+//  DRAG & DROP
+// ═══════════════════════════════════════════════
+function onCanvasDragOver(e) { e.preventDefault(); }
+
+function onCanvasDrop(e) {
+  e.preventDefault();
+  if (state.dragFromPalette) {
+    addBlock(state.dragFromPalette);
+    recordAction('add_block', { type: state.dragFromPalette });
+    state.dragFromPalette = null;
+  }
+}
+
+function handleBlockDrop(toIdx) {
+  if (state.dragFromPalette) {
+    addBlock(state.dragFromPalette, {}, toIdx);
+    recordAction('add_block', { type: state.dragFromPalette, at: toIdx });
+    state.dragFromPalette = null;
+  } else if (state.dragId !== null) {
+    const from = state.dragId;
+    let to = toIdx;
+    if (to > from) to--;
+    moveBlock(from, to);
+    state.dragId = null;
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  MODE SWITCHING
+// ═══════════════════════════════════════════════
+function setMode(mode) {
+  if (mode === state.mode) return;
+  state.mode = mode;
+
+  document.getElementById('btn-blocks').classList.toggle('active', mode === 'blocks');
+  document.getElementById('btn-code').classList.toggle('active', mode === 'code');
+
+  const bv = document.getElementById('block-view');
+  const cv = document.getElementById('code-view');
+
+  if (mode === 'code') {
+    bv.classList.add('hidden');
+    cv.classList.remove('hidden');
+    syncCodeFromBlocks();
+    recordAction('switch_mode', { mode: 'code' });
+  } else {
+    cv.classList.add('hidden');
+    bv.classList.remove('hidden');
+    syncBlocksFromCode();
+    recordAction('switch_mode', { mode: 'blocks' });
+  }
+
+  document.getElementById('sb-mode').textContent = 'Tryb: ' + (mode === 'blocks' ? 'Bloki' : 'Kod');
+}
+
+// ═══════════════════════════════════════════════
+//  CODE ↔ BLOCKS SYNC
+// ═══════════════════════════════════════════════
+function blocksToCode() {
+  if (state.blocks.length === 0) return '// Brak bloków\n// Przeciągnij bloki lub użyj AI → Bloki\n';
+  let code = '';
+  state.blocks.forEach(b => {
+    const def = BLOCK_MAP[b.type];
+    if (!def) return;
+    switch (b.type) {
+      case 'on_start':   code += `// po uruchomieniu\n`; break;
+      case 'repeat':     code += `for (let i = 0; i < ${b.fields.n||3}; i++) {\n`; break;
+      case 'wait':       code += `  await sleep(${b.fields.ms||500});\n`; break;
+      case 'if_true':    code += `if (${b.fields.cond||'true'}) {\n`; break;
+      case 'set_var':    code += `let ${b.fields.name||'x'} = ${b.fields.val||'0'};\n`; break;
+      case 'print':      code += `console.log(${JSON.stringify(b.fields.val||'')});\n`; break;
+      case 'input':      code += `const ${b.fields.name||'x'} = await input();\n`; break;
+      case 'set_title':  code += `document.title = ${JSON.stringify(b.fields.text||'')};\n`; break;
+      case 'set_color':  code += `document.body.style.background = "${b.fields.color||'#000'}";\n`; break;
+      case 'show_img':   code += `showImage("${b.fields.url||''}");\n`; break;
+      case 'ai_gen':     code += `// AI: ${b.fields.prompt||'...'}\n`; break;
+      case 'ai_ask':     code += `const answer = await ai.ask(${JSON.stringify(b.fields.q||'')});\n`; break;
+      case 'ai_explain': code += `// ai.explain(currentBlock)\n`; break;
+      default:           code += `// ${b.type}\n`;
+    }
+  });
+  return code;
+}
+
+function syncCodeFromBlocks() {
+  const code = blocksToCode();
+  const cv = document.getElementById('code-view');
+  cv.innerHTML = highlightCode(code);
+}
+
+function syncBlocksFromCode() {
+  // Parse code back to blocks (simplified)
+  const cv = document.getElementById('code-view');
+  const raw = cv.innerText || '';
+  const lines = raw.split('\n');
+  const newBlocks = [];
+  lines.forEach(line => {
+    line = line.trim();
+    if (!line || line === '') return;
+    if (line.startsWith('// po uruchomieniu')) {
+      newBlocks.push({ id: ++state.counter, type: 'on_start', fields: {} });
+    } else if (line.match(/^for\s*\(let i/)) {
+      const m = line.match(/i\s*<\s*(\d+)/);
+      newBlocks.push({ id: ++state.counter, type: 'repeat', fields: { n: m ? m[1] : '3' } });
+    } else if (line.match(/^await sleep/)) {
+      const m = line.match(/\((\d+)\)/);
+      newBlocks.push({ id: ++state.counter, type: 'wait', fields: { ms: m ? m[1] : '500' } });
+    } else if (line.match(/^if\s*\(/)) {
+      const m = line.match(/\((.+)\)/);
+      newBlocks.push({ id: ++state.counter, type: 'if_true', fields: { cond: m ? m[1] : 'true' } });
+    } else if (line.match(/^let\s+\w+\s*=/)) {
+      const m = line.match(/^let\s+(\w+)\s*=\s*(.+);/);
+      newBlocks.push({ id: ++state.counter, type: 'set_var', fields: { name: m?m[1]:'x', val: m?m[2]:'0' } });
+    } else if (line.match(/^console\.log/)) {
+      const m = line.match(/console\.log\((.+)\);/);
+      let val = m ? m[1] : '';
+      val = val.replace(/^"|"$/g,'').replace(/^'|'$/g,'');
+      newBlocks.push({ id: ++state.counter, type: 'print', fields: { val } });
+    } else if (line.match(/^\/\/ AI:/)) {
+      const prompt = line.replace('// AI:', '').trim();
+      newBlocks.push({ id: ++state.counter, type: 'ai_gen', fields: { prompt } });
+    } else if (line.match(/^const \w+ = await ai\.ask/)) {
+      const m = line.match(/ai\.ask\((.+)\)/);
+      let q = m ? m[1] : '';
+      q = q.replace(/^"|"$/g,'');
+      newBlocks.push({ id: ++state.counter, type: 'ai_ask', fields: { q } });
+    }
+  });
+  if (newBlocks.length > 0) {
+    state.blocks = newBlocks;
+    renderBlocks();
+    updateStatus();
+    toast('Kod zsynchronizowany → bloki');
+  }
+}
+
+function onCodeEdit() {
+  // debounce sync
+  clearTimeout(window._codeSyncTimer);
+  window._codeSyncTimer = setTimeout(() => {
+    if (state.mode === 'code') {
+      recordAction('edit_code', { code: document.getElementById('code-view').innerText });
+    }
+  }, 600);
+}
+
+function highlightCode(code) {
+  return code
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/(\/\/.*?)(\n|$)/g, '<span class="tok-cmt">$1</span>$2')
+    .replace(/\b(let|const|var|for|if|else|await|async|return|function|of|in|true|false|null|undefined)\b/g, '<span class="tok-kw">$1</span>')
+    .replace(/\b(console\.log|sleep|input|showImage|ai\.ask|ai\.explain|document\.title|document\.body)\b/g, '<span class="tok-fn">$1</span>')
+    .replace(/"([^"]*)"/g, '<span class="tok-str">"$1"</span>')
+    .replace(/\b(\d+)\b/g, '<span class="tok-num">$1</span>');
+}
+
+// ═══════════════════════════════════════════════
+//  RECORDING
+// ═══════════════════════════════════════════════
+function toggleRecord() {
+  state.recording = !state.recording;
+  const btn = document.getElementById('btn-rec');
+  const ind = document.getElementById('rec-ind');
+
+  if (state.recording) {
+    state.recStart = Date.now();
+    btn.classList.add('red');
+    btn.textContent = '⏹ Stop';
+    ind.classList.add('on');
+    // Record initial state
+    recordAction('session_start', { blocks: JSON.parse(JSON.stringify(state.blocks)) });
+    toast('Nagrywanie rozpoczęte');
+  } else {
+    btn.classList.remove('red');
+    btn.textContent = '⏺ Nagraj';
+    ind.classList.remove('on');
+    document.getElementById('btn-play').style.display = '';
+    document.getElementById('btn-export').style.display = '';
+    toast(`Nagrano ${state.session.length} klatek`);
+  }
+}
+
+function recordAction(action, data = {}) {
+  if (!state.recording) return;
+  const t = Date.now() - state.recStart;
+  const frame = {
+    t,
+    action,
+    data,
+    snapshot: JSON.parse(JSON.stringify(state.blocks)),
+    mode: state.mode,
+  };
+  state.session.push(frame);
+  renderTimeline();
+  updateStatus();
+}
+
+function clearSession() {
+  state.session = [];
+  state.playhead = -1;
+  renderTimeline();
+  updateStatus();
+  document.getElementById('btn-play').style.display = 'none';
+  document.getElementById('btn-export').style.display = 'none';
+  toast('Sesja wyczyszczona');
+}
+
+// ═══════════════════════════════════════════════
+//  TIMELINE RENDER
+// ═══════════════════════════════════════════════
+const ACTION_ICONS = {
+  session_start: '🚩', add_block: '➕', remove_block: '✕',
+  move_block: '↕', edit_field: '✏️', switch_mode: '⇄',
+  edit_code: '{ }', ai_gen: '✦', run: '▶',
+};
+const ACTION_LABELS = {
+  session_start: 'Start sesji', add_block: 'Dodano blok',
+  remove_block: 'Usunięto blok', move_block: 'Przesunięto blok',
+  edit_field: 'Edytowano pole', switch_mode: 'Zmiana trybu',
+  edit_code: 'Edycja kodu', ai_gen: 'AI generuje', run: 'Uruchomiono',
+};
+
+function renderTimeline() {
+  const scroll = document.getElementById('timeline-scroll');
+  if (state.session.length === 0) {
+    scroll.innerHTML = '<div class="tl-empty">Naciśnij ⏺ Nagraj<br>a każda akcja zostanie<br>nagrana jak klatka animacji.</div>';
+    return;
+  }
+  scroll.innerHTML = '';
+  state.session.forEach((frame, i) => {
+    const el = document.createElement('div');
+    el.className = 'tl-frame' + (i === state.playhead ? ' active' : '');
+    el.onclick = () => jumpToFrame(i);
+    const t = (frame.t / 1000).toFixed(1);
+    const icon = ACTION_ICONS[frame.action] || '●';
+    const label = ACTION_LABELS[frame.action] || frame.action;
+    el.innerHTML = `
+      <span class="tl-num">${i + 1}</span>
+      <span class="tl-icon">${icon}</span>
+      <span class="tl-desc">${label}${frame.data?.type ? ': ' + frame.data.type : ''}</span>
+      <span class="tl-time">${t}s</span>
+    `;
+    scroll.appendChild(el);
+  });
+  // scroll to bottom
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════
+//  PLAYBACK
+// ═══════════════════════════════════════════════
+function playSession() {
+  if (state.session.length === 0) { toast('Brak nagrania'); return; }
+  state.playhead = 0;
+  applyFrame(0);
+  startPlayback();
+}
+
+function togglePlayback() {
+  if (state.playing) {
+    stopPlayback();
+  } else {
+    if (state.playhead >= state.session.length - 1) state.playhead = 0;
+    startPlayback();
+  }
+}
+
+function startPlayback() {
+  state.playing = true;
+  document.getElementById('pb-play-btn').textContent = '⏸';
+  playNextFrame();
+}
+
+function stopPlayback() {
+  state.playing = false;
+  clearTimeout(state.playTimer);
+  document.getElementById('pb-play-btn').textContent = '▶';
+}
+
+function playNextFrame() {
+  if (!state.playing) return;
+  if (state.playhead >= state.session.length) {
+    stopPlayback();
+    toast('Odtwarzanie zakończone');
+    return;
+  }
+  applyFrame(state.playhead);
+  const delay = parseInt(document.getElementById('pb-speed').value);
+  state.playTimer = setTimeout(() => {
+    state.playhead++;
+    playNextFrame();
+  }, delay);
+}
+
+function applyFrame(idx) {
+  if (idx < 0 || idx >= state.session.length) return;
+  const frame = state.session[idx];
+
+  // Restore snapshot
+  state.blocks = JSON.parse(JSON.stringify(frame.snapshot));
+
+  // Switch mode visually
+  const wasMode = state.mode;
+  state.mode = frame.mode;
+  document.getElementById('btn-blocks').classList.toggle('active', state.mode === 'blocks');
+  document.getElementById('btn-code').classList.toggle('active', state.mode === 'code');
+  document.getElementById('block-view').classList.toggle('hidden', state.mode !== 'blocks');
+  document.getElementById('code-view').classList.toggle('hidden', state.mode !== 'code');
+
+  renderAll();
+
+  // Simulate cursor movement to relevant element
+  if (frame.action === 'add_block') {
+    simulateCursorToBlock(frame.data.type);
+  } else if (frame.action === 'switch_mode') {
+    const btn = frame.mode === 'code' ? document.getElementById('btn-code') : document.getElementById('btn-blocks');
+    simulateCursorToEl(btn);
+  }
+
+  // Update timeline highlight
+  state.playhead = idx;
+  renderTimeline();
+  const items = document.querySelectorAll('.tl-frame');
+  if (items[idx]) {
+    items[idx].classList.add('playing');
+    items[idx].scrollIntoView({ block: 'nearest' });
+  }
+
+  // Progress bar
+  const pct = state.session.length > 1 ? (idx / (state.session.length - 1)) * 100 : 0;
+  document.getElementById('pb-fill').style.width = pct + '%';
+  updateStatus();
+}
+
+function jumpToFrame(idx) {
+  stopPlayback();
+  applyFrame(idx);
+}
+
+function stepBack() {
+  stopPlayback();
+  if (state.playhead > 0) applyFrame(state.playhead - 1);
+}
+
+function stepForward() {
+  stopPlayback();
+  if (state.playhead < state.session.length - 1) applyFrame(state.playhead + 1);
+}
+
+// ═══════════════════════════════════════════════
+//  CURSOR SIMULATION
+// ═══════════════════════════════════════════════
+function simulateCursorToEl(el) {
+  if (!el) return;
+  const ghost = document.getElementById('cursor-ghost');
+  ghost.style.display = 'block';
+  const r = el.getBoundingClientRect();
+  ghost.style.left = (r.left + r.width / 2) + 'px';
+  ghost.style.top = (r.top + r.height / 2) + 'px';
+  setTimeout(() => { ghost.style.display = 'none'; }, 800);
+}
+
+function simulateCursorToBlock(type) {
+  const palBlock = document.querySelector(`.pal-block[data-type="${type}"]`);
+  if (!palBlock) return;
+  const ghost = document.getElementById('cursor-ghost');
+  const bg = document.getElementById('block-ghost');
+  const def = BLOCK_MAP[type];
+  ghost.style.display = 'block';
+
+  const r = palBlock.getBoundingClientRect();
+  ghost.style.left = (r.left + 10) + 'px';
+  ghost.style.top = (r.top + 10) + 'px';
+
+  setTimeout(() => {
+    if (!def) return;
+    bg.className = `canvas-block ${def.catColor}`;
+    bg.textContent = def.icon + ' ' + def.label;
+    bg.style.display = 'block';
+    bg.style.left = ghost.style.left;
+    bg.style.top = ghost.style.top;
+
+    // Move to canvas
+    const canvas = document.getElementById('block-view');
+    const cr = canvas.getBoundingClientRect();
+    setTimeout(() => {
+      ghost.style.left = (cr.left + cr.width / 2) + 'px';
+      ghost.style.top = (cr.top + cr.height * 0.4) + 'px';
+      bg.style.left = ghost.style.left;
+      bg.style.top = ghost.style.top;
+      setTimeout(() => {
+        bg.style.display = 'none';
+        ghost.style.display = 'none';
+      }, 300);
+    }, 300);
+  }, 200);
+}
+
+// ═══════════════════════════════════════════════
+//  AI INTEGRATION
+// ═══════════════════════════════════════════════
+function saveAPI() {
+  state.apiKey = document.getElementById('api-input').value.trim();
+  document.getElementById('api-modal').classList.add('hidden');
+  if (state.apiKey) {
+    document.getElementById('api-status').textContent = '● klucz aktywny';
+    document.getElementById('api-status').style.color = 'var(--green)';
+    toast('Klucz API zapisany');
+  }
+}
+function skipAPI() {
+  document.getElementById('api-modal').classList.add('hidden');
+}
+
+async function generateFromAI() {
+  const prompt = window.prompt('Opisz program który chcesz stworzyć (po polsku):');
+  if (!prompt) return;
+
+  if (!state.apiKey) {
+    toast('Brak klucza API — kliknij "○ brak klucza" żeby dodać');
+    return;
+  }
+
+  toast('AI generuje bloki...');
+  recordAction('ai_gen', { prompt });
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 800,
+        system: `Jesteś generatorem bloków dla edytora wizualnego podobnego do MakeCode/Scratch.
+Dostępne typy bloków: on_start, repeat (n), wait (ms), if_true (cond), set_var (name, val), print (val), input (name), set_title (text), set_color (color), show_img (url), ai_gen (prompt), ai_ask (q).
+Odpowiedz TYLKO w JSON: {"blocks": [{"type":"...", "fields":{"klucz":"wartość"}}, ...]}
+Bez żadnego tekstu przed ani po JSON.`,
+        messages: [{ role: 'user', content: `Stwórz program: ${prompt}` }]
+      })
+    });
+    const data = await resp.json();
+    const text = data.content[0]?.text || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    if (parsed.blocks && Array.isArray(parsed.blocks)) {
+      state.blocks = [];
+      parsed.blocks.forEach(b => addBlock(b.type, b.fields || {}));
+      toast(`AI wygenerowało ${parsed.blocks.length} bloków!`);
+
+      // Record individual add actions for playback
+      if (state.recording) {
+        parsed.blocks.forEach(b => recordAction('add_block', { type: b.type }));
+      }
+    }
+  } catch (e) {
+    toast('Błąd AI: ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  RUN PROGRAM
+// ═══════════════════════════════════════════════
+function runProgram() {
+  recordAction('run', {});
+  toast('Uruchamianie... (symulacja w konsoli)');
+  const code = blocksToCode();
+  console.group('🟩 BlockStudio — uruchomienie programu');
+  console.log(code);
+  console.groupEnd();
+
+  // Visual flash on blocks
+  document.querySelectorAll('.canvas-block').forEach((el, i) => {
+    setTimeout(() => {
+      el.style.transition = 'filter .15s';
+      el.style.filter = 'brightness(2)';
+      setTimeout(() => { el.style.filter = ''; }, 150);
+    }, i * 120);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  EXPORT GIF (placeholder — real GIF needs server)
+// ═══════════════════════════════════════════════
+function exportGIF() {
+  if (state.session.length === 0) { toast('Brak nagrania do eksportu'); return; }
+  toast('Eksport GIF: ' + state.session.length + ' klatek → do pełnego GIF potrzebna biblioteka gif.js');
+
+  // Show export info
+  const info = `Sesja nagrania (${state.session.length} klatek):
+
+${state.session.map((f,i) => {
+  const t = (f.t/1000).toFixed(2)+'s';
+  const label = ACTION_LABELS[f.action] || f.action;
+  return `[${String(i+1).padStart(2,'0')}] ${t.padEnd(6)} ${label}`;
+}).join('\n')}
+
+Aby wygenerować prawdziwy GIF, użyj biblioteki gif.js
+lub nagraj ekran narzędziem systemowym.`;
+
+  const blob = new Blob([info], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'blockstudio-session.txt';
+  a.click();
+}
+
+// ═══════════════════════════════════════════════
+//  STATUS & UTILS
+// ═══════════════════════════════════════════════
+function updateStatus() {
+  document.getElementById('sb-blocks').textContent = state.blocks.length + ' bloków';
+  document.getElementById('sb-frames').textContent = state.session.length + ' klatek';
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ═══════════════════════════════════════════════
+//  KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'Tab') { e.preventDefault(); setMode(state.mode === 'blocks' ? 'code' : 'blocks'); }
+  if (e.key === ' ' && e.ctrlKey) { e.preventDefault(); toggleRecord(); }
+  if (e.key === 'F5') { e.preventDefault(); runProgram(); }
+  if (e.key === 'ArrowRight' && state.session.length) stepForward();
+  if (e.key === 'ArrowLeft' && state.session.length) stepBack();
+});
+
+// ═══════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>

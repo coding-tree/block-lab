@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ActorScratch — Model Aktorów</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════
+   DESIGN: Retro-terminal meets modern IDE
+   Czarne tło, zielone akcenty (Erlang vibes),
+   aktorzy jako "węzły" z pulsującym życiem
+   ═══════════════════════════════════════ */
+:root {
+  --bg:        #09090f;
+  --bg2:       #0f0f1a;
+  --bg3:       #16162a;
+  --bg4:       #1e1e35;
+  --border:    #2a2a4a;
+  --border2:   #3a3a6a;
+  --text:      #e8e8f0;
+  --muted:     #6060a0;
+  --muted2:    #8080b0;
+
+  /* Actor colors */
+  --root:      #00ff88;
+  --root-dim:  #004422;
+  --sup:       #4488ff;
+  --sup-dim:   #111833;
+  --worker:    #ffaa00;
+  --worker-dim:#331f00;
+  --dead:      #ff3355;
+  --dead-dim:  #330011;
+
+  --msg:       #ff55ff;
+  --tick:      #00ffff;
+
+  --r: 10px;
+  --r-sm: 6px;
+  --font: 'Outfit', sans-serif;
+  --mono: 'DM Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; }
+
+/* ── SCREEN LAYOUT ── */
+#app { display: grid; grid-template-rows: 48px 1fr 24px; height: 100vh; }
+
+/* ── TOPBAR ── */
+#topbar {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  flex-shrink: 0;
+}
+.logo {
+  font-size: 16px; font-weight: 900; letter-spacing: -0.5px;
+  margin-right: 6px;
+}
+.logo .a { color: var(--root); }
+.logo .s { color: var(--sup); }
+
+.tb-divider { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+
+.tb-btn {
+  height: 28px; padding: 0 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border2);
+  background: var(--bg3);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 5px;
+  transition: all .12s;
+  white-space: nowrap;
+}
+.tb-btn:hover { background: var(--bg4); border-color: var(--muted2); }
+.tb-btn.run  { background: var(--root-dim); border-color: var(--root); color: var(--root); }
+.tb-btn.run:hover { background: #006633; }
+.tb-btn.run.running { background: var(--dead-dim); border-color: var(--dead); color: var(--dead); }
+.tb-btn.active { border-color: var(--sup); color: var(--sup); }
+
+.mode-pills {
+  display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden;
+}
+.mode-pills .tb-btn { border: none; border-radius: 0; background: transparent; }
+.mode-pills .tb-btn.active { background: var(--bg4); color: var(--text); }
+
+.msg-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--muted2);
+  cursor: pointer; user-select: none;
+}
+.msg-toggle input { accent-color: var(--msg); cursor: pointer; }
+
+.tb-spacer { flex: 1; }
+
+.project-mode-badge {
+  font-size: 11px; font-family: var(--mono);
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid;
+  font-weight: 500;
+}
+.badge-game { border-color: var(--root); color: var(--root); background: var(--root-dim); }
+.badge-pres  { border-color: var(--sup);  color: var(--sup);  background: var(--sup-dim); }
+
+/* ── MAIN COLUMNS ── */
+#main {
+  display: grid;
+  grid-template-columns: 230px 1fr 300px;
+  overflow: hidden;
+}
+
+/* ═══ LEFT: SUPERVISOR TREE ═══ */
+#tree-panel {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+#tree-header {
+  padding: 10px 12px 8px;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--muted); border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+}
+#tree-scroll { flex: 1; overflow-y: auto; padding: 10px 8px; }
+
+/* Tree nodes */
+.tree-node {
+  display: flex; flex-direction: column; margin-bottom: 2px;
+}
+.tree-node-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all .12s;
+  position: relative;
+}
+.tree-node-row:hover { background: var(--bg3); }
+.tree-node-row.selected { background: var(--bg4); border-color: var(--border2); }
+.tree-node-row.root-node { border-color: var(--root-dim); background: #001a0d; }
+.tree-node-row.root-node.selected { border-color: var(--root); }
+
+.tree-node-children { margin-left: 16px; border-left: 1px solid var(--border); padding-left: 8px; }
+
+.node-icon { font-size: 15px; flex-shrink: 0; }
+.node-name { font-weight: 600; font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-badge {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  padding: 1px 5px; border-radius: 3px; letter-spacing: .5px;
+}
+.badge-root   { background: var(--root-dim); color: var(--root); }
+.badge-sup    { background: var(--sup-dim);  color: var(--sup); }
+.badge-worker { background: var(--worker-dim); color: var(--worker); }
+
+.node-status {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+}
+.status-alive  { background: var(--root); box-shadow: 0 0 5px var(--root); animation: pulse-alive 2s ease-in-out infinite; }
+.status-idle   { background: var(--worker); }
+.status-dead   { background: var(--dead); }
+.status-sup    { background: var(--sup); }
+
+@keyframes pulse-alive { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* Add actor buttons */
+.add-actor-row {
+  display: flex; gap: 4px; margin-top: 8px; padding: 0 4px;
+}
+.add-btn {
+  flex: 1; padding: 5px; border-radius: var(--r-sm);
+  border: 1px dashed var(--border2);
+  background: transparent; color: var(--muted2);
+  font-family: var(--font); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: all .12s; text-align: center;
+}
+.add-btn:hover { border-style: solid; }
+.add-btn.sup    { color: var(--sup); border-color: var(--sup-dim); }
+.add-btn.sup:hover    { background: var(--sup-dim); }
+.add-btn.worker { color: var(--worker); border-color: var(--worker-dim); }
+.add-btn.worker:hover { background: var(--worker-dim); }
+
+/* Supervisor policy */
+.sup-policy {
+  display: flex; gap: 3px; margin: 4px 0 0 24px;
+}
+.policy-btn {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
+  padding: 2px 5px; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  transition: all .1s;
+}
+.policy-btn.active { background: var(--sup-dim); border-color: var(--sup); color: var(--sup); }
+
+/* ═══ CENTER: SCENE ═══ */
+#scene-area {
+  position: relative; overflow: hidden;
+  background: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0);
+  background-size: 32px 32px;
+}
+
+/* SVG message arrows overlay */
+#msg-svg {
+  position: absolute; inset: 0; pointer-events: none; z-index: 5;
+}
+
+/* Actor bodies on scene */
+.actor-body {
+  position: absolute;
+  background: var(--bg3);
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  min-width: 110px;
+  cursor: move;
+  user-select: none;
+  z-index: 10;
+  transition: border-color .2s, box-shadow .2s;
+}
+.actor-body:hover { z-index: 20; }
+.actor-body.selected { z-index: 30; }
+.actor-body.worker-actor { border-color: var(--worker-dim); }
+.actor-body.worker-actor.selected { border-color: var(--worker); box-shadow: 0 0 20px #ffaa0033; }
+.actor-body.root-actor { border-color: var(--root); box-shadow: 0 0 16px #00ff8820; }
+.actor-body.receiving { animation: flash-msg .3s ease; }
+@keyframes flash-msg { 0%,100%{} 50%{box-shadow: 0 0 30px var(--msg), 0 0 60px var(--msg); } }
+
+.actor-head {
+  padding: 7px 10px 5px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+}
+.actor-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; flex-shrink: 0;
+}
+.actor-title { font-weight: 700; font-size: 12px; flex: 1; }
+.actor-pid {
+  font-family: var(--mono); font-size: 9px; color: var(--muted);
+}
+
+.actor-mailbox {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  min-height: 24px;
+  display: flex; flex-wrap: wrap; gap: 3px; align-items: center;
+}
+.mailbox-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-right: 2px; }
+.mail-msg {
+  font-size: 9px; font-family: var(--mono); font-weight: 500;
+  padding: 1px 5px; border-radius: 3px;
+  background: #ff55ff22; border: 1px solid #ff55ff55; color: var(--msg);
+  animation: pop-in .15s ease;
+}
+@keyframes pop-in { from{transform:scale(0)} to{transform:scale(1)} }
+
+.actor-state {
+  padding: 4px 8px 6px;
+  font-size: 10px; font-family: var(--mono); color: var(--muted2);
+  min-height: 20px;
+}
+
+/* Scene hint */
+#scene-hint {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center; color: var(--border2);
+  pointer-events: none; font-size: 13px; line-height: 2;
+}
+
+/* ═══ RIGHT: ACTOR EDITOR ═══ */
+#editor-panel {
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+#editor-header {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#editor-actor-name {
+  font-weight: 800; font-size: 15px; margin-bottom: 2px;
+  display: flex; align-items: center; gap: 8px;
+}
+#editor-actor-type { font-size: 10px; color: var(--muted); font-family: var(--mono); }
+
+/* Block palette inside editor */
+#editor-tabs {
+  display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.etab {
+  flex: 1; padding: 7px; text-align: center;
+  font-size: 11px; font-weight: 600;
+  color: var(--muted); cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all .12s;
+}
+.etab.active { color: var(--text); border-bottom-color: var(--sup); }
+
+#editor-body { flex: 1; overflow-y: auto; }
+
+/* Block palette */
+#block-palette { padding: 8px; display: flex; flex-direction: column; gap: 3px; }
+.bcat { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 7px 4px 3px; }
+
+.bpal {
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+  font-size: 12px; font-weight: 600;
+  cursor: grab; user-select: none;
+  display: flex; align-items: center; gap: 7px;
+  transition: transform .1s, filter .1s;
+  border: 1px solid transparent;
+}
+.bpal:hover { transform: translateX(4px); filter: brightness(1.2); }
+
+/* Code blocks in script */
+#block-script { padding: 8px; display: flex; flex-direction: column; gap: 0; }
+#block-script-empty { padding: 20px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.8; }
+
+.script-block {
+  border-radius: 0;
+  padding: 7px 10px;
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; gap: 6px;
+  position: relative;
+  border-left: 3px solid transparent;
+  cursor: grab; user-select: none;
+  transition: filter .1s;
+}
+.script-block:first-child { border-radius: 8px 8px 0 0; }
+.script-block:last-child  { border-radius: 0 0 8px 8px; }
+.script-block:only-child  { border-radius: 8px; }
+.script-block:hover { filter: brightness(1.15); }
+
+.script-field {
+  background: #00000040;
+  border: 1px solid #ffffff20;
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: #fff; font-family: var(--mono);
+  font-size: 11px; min-width: 50px; max-width: 120px;
+  outline: none; cursor: text;
+}
+.script-field:focus { border-color: #ffffff50; }
+
+.script-block-rm {
+  margin-left: auto; background: none; border: none;
+  color: #ffffff25; cursor: pointer; font-size: 13px;
+  padding: 2px 4px; border-radius: 3px; transition: color .1s;
+}
+.script-block-rm:hover { color: var(--dead); }
+
+/* Script drop zone */
+.script-dz {
+  height: 5px; border-radius: 3px; transition: height .15s, background .15s;
+}
+.script-dz.over { height: 22px; background: #4488ff30; border: 1px dashed var(--sup); border-radius: 4px; }
+
+/* Actor state editor */
+#state-editor { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.state-row { display: flex; gap: 6px; align-items: center; }
+.state-key, .state-val {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 5px 8px;
+  color: var(--text); font-family: var(--mono); font-size: 11px; outline: none;
+}
+.state-key:focus, .state-val:focus { border-color: var(--border2); }
+.state-rm { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
+.state-rm:hover { color: var(--dead); }
+.state-add { width: 100%; padding: 6px; background: none; border: 1px dashed var(--border2);
+  border-radius: var(--r-sm); color: var(--muted); cursor: pointer; font-family: var(--font); font-size: 11px; font-weight: 600;
+  transition: all .12s; }
+.state-add:hover { border-color: var(--worker); color: var(--worker); }
+
+/* ═══ BLOCK COLORS ═══ */
+.bc-lifecycle { background: #0a1f0a; border-left-color: var(--root) !important; color: #7ee787; }
+.bc-msg       { background: #1a0a1a; border-left-color: var(--msg) !important; color: #ff99ff; }
+.bc-state     { background: #1a1000; border-left-color: var(--worker) !important; color: #ffcc66; }
+.bc-control   { background: #0a0a1a; border-left-color: var(--sup) !important; color: #88aaff; }
+.bc-clock     { background: #001a1a; border-left-color: var(--tick) !important; color: #66ffff; }
+.bc-pres      { background: #1a001a; border-left-color: #cc44ff !important; color: #dd88ff; }
+
+/* ═══ MESSAGE ANIMATION ═══ */
+.msg-arrow { stroke: var(--msg); stroke-width: 2; fill: none; opacity: 0; }
+.msg-arrow.flying { animation: fly-msg .6s ease forwards; }
+@keyframes fly-msg { 0%{opacity:1;stroke-dashoffset:200} 100%{opacity:0;stroke-dashoffset:0} }
+
+.msg-dot {
+  position: fixed; pointer-events: none; z-index: 200;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--msg); box-shadow: 0 0 8px var(--msg);
+  transform: translate(-50%, -50%);
+  animation: msg-travel .5s ease forwards;
+}
+@keyframes msg-travel { 0%{opacity:1} 100%{opacity:0} }
+
+/* ═══ PROJECT PICKER MODAL ═══ */
+#project-modal {
+  position: fixed; inset: 0;
+  background: #000000cc;
+  z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(10px);
+}
+#project-modal.hidden { display: none; }
+.pm-box {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  padding: 32px;
+  width: 540px; max-width: 96vw;
+}
+.pm-box h1 {
+  font-size: 24px; font-weight: 900; margin-bottom: 6px;
+  letter-spacing: -0.5px;
+}
+.pm-box h1 .a { color: var(--root); }
+.pm-box h1 .s { color: var(--sup); }
+.pm-tagline { color: var(--muted2); font-size: 13px; margin-bottom: 28px; line-height: 1.6; }
+.pm-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+.pm-card {
+  background: var(--bg3);
+  border: 2px solid var(--border);
+  border-radius: var(--r);
+  padding: 20px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pm-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+.pm-card.selected-game { border-color: var(--root); background: var(--root-dim); }
+.pm-card.selected-pres  { border-color: var(--sup);  background: var(--sup-dim); }
+.pm-card-icon { font-size: 32px; margin-bottom: 10px; }
+.pm-card h3 { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
+.pm-card p { font-size: 11px; color: var(--muted2); line-height: 1.6; }
+.pm-start {
+  width: 100%; padding: 13px;
+  border-radius: var(--r);
+  border: none;
+  font-family: var(--font); font-size: 15px; font-weight: 800;
+  cursor: pointer; transition: opacity .12s;
+}
+.pm-start.game { background: var(--root); color: #000; }
+.pm-start.pres  { background: var(--sup);  color: #fff; }
+.pm-start:hover { opacity: .9; }
+
+/* ═══ STATUSBAR ═══ */
+#statusbar {
+  height: 24px; display: flex; align-items: center; gap: 12px;
+  padding: 0 12px; background: var(--bg2); border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--muted); font-family: var(--mono);
+}
+.sb-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--root); display: inline-block; }
+
+/* ═══ MISC ═══ */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+#toast {
+  position: fixed; bottom: 36px; left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 8px; padding: 7px 16px;
+  font-size: 12px; font-weight: 600;
+  opacity: 0; transition: all .2s;
+  pointer-events: none; z-index: 1000; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Runtime tick flash */
+.tick-flash { animation: tf .15s ease; }
+@keyframes tf { 0%,100%{} 50%{border-color: var(--tick) !important; box-shadow: 0 0 20px #00ffff44 !important;} }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ═══ PROJECT MODAL ═══ -->
+<div id="project-modal">
+  <div class="pm-box">
+    <h1><span class="a">Actor</span><span class="s">Scratch</span></h1>
+    <p class="pm-tagline">
+      System aktorów jak w języku Erlang — każdy aktor to niezależny byt<br>
+      ze swoją skrzynką wiadomości, stanem i kodem. Zacznij od projektu:
+    </p>
+    <div class="pm-modes">
+      <div class="pm-card" id="card-game" onclick="selectMode('game')">
+        <div class="pm-card-icon">🎮</div>
+        <h3>Pętla Gry</h3>
+        <p>RootActor jako Clock wysyła <code>tick</code> co klatkę. Aktorzy reagują równolegle — postać, wrogowie, fizyka.</p>
+      </div>
+      <div class="pm-card" id="card-pres" onclick="selectMode('pres')">
+        <div class="pm-card-icon">🎬</div>
+        <h3>Prezentacja / Animacja</h3>
+        <p>RootActor jako Conductor. Slajdy, narratorzy i efekty jako osobne aktorzy. Sekwencja i overlap.</p>
+      </div>
+    </div>
+    <button class="pm-start game" id="pm-start-btn" onclick="startProject()">Utwórz projekt →</button>
+  </div>
+</div>
+
+<!-- ═══ TOPBAR ═══ -->
+<div id="topbar">
+  <span class="logo"><span class="a">Actor</span><span class="s">Scratch</span></span>
+  <div class="tb-divider"></div>
+  <span class="project-mode-badge badge-game" id="mode-badge">🎮 Pętla Gry</span>
+  <div class="tb-divider"></div>
+  <div class="mode-pills">
+    <button class="tb-btn active" id="view-scene-btn" onclick="setView('scene')">🎭 Scena</button>
+    <button class="tb-btn" id="view-code-btn" onclick="setView('code')">{ } Kod</button>
+  </div>
+  <div class="tb-divider"></div>
+  <label class="msg-toggle">
+    <input type="checkbox" id="show-msgs" checked onchange="toggleMsgVis()">
+    animuj wiadomości
+  </label>
+  <div class="tb-spacer"></div>
+  <button class="tb-btn" onclick="spawnActor('worker')">＋ Aktor</button>
+  <button class="tb-btn" onclick="spawnActor('supervisor')">＋ Supervisor</button>
+  <div class="tb-divider"></div>
+  <button class="tb-btn run" id="run-btn" onclick="toggleRun()">▶ Uruchom</button>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div id="main">
+
+  <!-- LEFT: TREE -->
+  <div id="tree-panel">
+    <div id="tree-header">
+      <span>Drzewo Supervisorów</span>
+      <span id="tree-actor-count" style="font-size:11px;color:var(--muted)">0 aktorów</span>
+    </div>
+    <div id="tree-scroll"></div>
+  </div>
+
+  <!-- CENTER: SCENE -->
+  <div id="scene-area" ondragover="e=>e.preventDefault()" ondrop="onSceneDrop(event)">
+    <svg id="msg-svg"></svg>
+    <div id="scene-hint">
+      <div style="font-size:42px;margin-bottom:12px">⬡</div>
+      Spawnuj aktorów przyciskami wyżej<br>
+      lub kliknij <strong>▶ Uruchom</strong> aby zobaczyć ich w akcji
+    </div>
+  </div>
+
+  <!-- RIGHT: EDITOR -->
+  <div id="editor-panel">
+    <div id="editor-header">
+      <div id="editor-actor-name">
+        <span id="ed-icon">⬡</span>
+        <span id="ed-name">Wybierz aktora</span>
+        <span class="node-badge badge-worker" id="ed-badge">WORKER</span>
+      </div>
+      <div id="editor-actor-type" style="font-family:var(--mono);font-size:10px;color:var(--muted)">← kliknij aktora w drzewie lub na scenie</div>
+    </div>
+    <div id="editor-tabs">
+      <div class="etab active" onclick="setEdTab('blocks')" id="etab-blocks">🧩 Bloki</div>
+      <div class="etab" onclick="setEdTab('palette')" id="etab-palette">📦 Paleta</div>
+      <div class="etab" onclick="setEdTab('state')" id="etab-state">🧠 Stan</div>
+    </div>
+    <div id="editor-body">
+      <div id="tab-blocks">
+        <div id="block-script">
+          <div id="block-script-empty">Wybierz aktora i przeciągaj<br>bloki z zakładki <strong>Paleta</strong></div>
+        </div>
+      </div>
+      <div id="tab-palette" style="display:none">
+        <div id="block-palette"></div>
+      </div>
+      <div id="tab-state" style="display:none">
+        <div id="state-editor">
+          <div style="font-size:11px;color:var(--muted);padding:4px 0 8px">Stan wewnętrzny aktora (klucz → wartość):</div>
+          <div id="state-rows"></div>
+          <button class="state-add" onclick="addStateRow()">＋ Dodaj pole stanu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUSBAR -->
+<div id="statusbar">
+  <span class="sb-dot"></span>
+  <span id="sb-mode">Tryb: Scena</span>
+  <span>│</span>
+  <span id="sb-actors">0 aktorów</span>
+  <span>│</span>
+  <span id="sb-msgs">0 wiadomości wysłanych</span>
+  <span>│</span>
+  <span id="sb-tick" style="color:var(--muted)">zatrzymany</span>
+</div>
+</div><!-- #app -->
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+const S = {
+  projectMode: 'game',   // 'game' | 'pres'
+  actors: {},            // id → actor
+  selected: null,        // selected actor id
+  running: false,
+  tickInterval: null,
+  tickCount: 0,
+  msgCount: 0,
+  showMsgs: true,
+  view: 'scene',
+  edTab: 'blocks',
+  dragBlockType: null,
+  dragScriptIdx: null,
+  counter: 0,
+};
+
+// ═══════════════════════════════════════════════════════════
+//  ACTOR SCHEMA
+// ═══════════════════════════════════════════════════════════
+/*
+  actor = {
+    id: 'a1',
+    pid: '<0.1.0>',
+    name: 'Player',
+    type: 'root' | 'supervisor' | 'worker',
+    parentId: null | 'a0',
+    children: ['a2','a3'],  // only for root/supervisor
+    policy: 'one_for_one',  // only for supervisor
+    maxRestarts: 3,
+    icon: '🤖',
+    color: '#ffaa00',
+    x: 200, y: 150,         // scene position
+    mailbox: [],            // current messages
+    state: { key: val },    // internal state
+    blocks: [],             // code blocks
+    status: 'alive'|'idle'|'dead',
+  }
+*/
+
+function mkId() { return 'a' + (++S.counter); }
+function mkPid(n) { return `<0.${n}.0>`; }
+
+// ═══════════════════════════════════════════════════════════
+//  PROJECT INIT
+// ═══════════════════════════════════════════════════════════
+let selectedProjectMode = 'game';
+
+function selectMode(m) {
+  selectedProjectMode = m;
+  document.getElementById('card-game').classList.toggle('selected-game', m === 'game');
+  document.getElementById('card-pres').classList.toggle('selected-pres', m === 'pres');
+  const btn = document.getElementById('pm-start-btn');
+  btn.className = 'pm-start ' + m;
+  btn.textContent = m === 'game' ? '🎮 Utwórz grę →' : '🎬 Utwórz prezentację →';
+}
+
+function startProject() {
+  S.projectMode = selectedProjectMode;
+  document.getElementById('project-modal').classList.add('hidden');
+
+  const badge = document.getElementById('mode-badge');
+  if (S.projectMode === 'game') {
+    badge.textContent = '🎮 Pętla Gry';
+    badge.className = 'project-mode-badge badge-game';
+    initGameProject();
+  } else {
+    badge.textContent = '🎬 Prezentacja';
+    badge.className = 'project-mode-badge badge-pres';
+    initPresProject();
+  }
+
+  buildPalette();
+  renderAll();
+}
+
+function initGameProject() {
+  // RootActor: Game (Clock)
+  const root = createActor('root', 'Game', '⬡', null, 300, 40);
+  root.blocks = [
+    { type: 'on_start', fields: {} },
+    { type: 'clock_tick', fields: { ms: '16' } },
+    { type: 'send_all', fields: { msg: 'tick' } },
+  ];
+
+  // Supervisor: Systems
+  const supSys = createActor('supervisor', 'Systems', '🛡', root.id, 120, 160);
+  supSys.policy = 'one_for_one';
+
+  // Supervisor: Entities
+  const supEnt = createActor('supervisor', 'Entities', '🛡', root.id, 440, 160);
+  supEnt.policy = 'one_for_one';
+
+  // Workers under Systems
+  const wPhys = createActor('worker', 'Physics', '⚙️', supSys.id, 60, 280);
+  wPhys.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'state_set', fields: { key: 'vel_y', val: 'stan.vel_y + 0.1' } },
+  ];
+  wPhys.state = { vel_y: '0', gravity: '0.1' };
+
+  const wInput = createActor('worker', 'Input', '⌨️', supSys.id, 200, 280);
+  wInput.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'send_msg', fields: { to: 'Player', msg: 'move', data: 'klawiatura' } },
+  ];
+
+  // Workers under Entities
+  const wPlayer = createActor('worker', 'Player', '🧑', supEnt.id, 380, 280);
+  wPlayer.blocks = [
+    { type: 'on_start', fields: {} },
+    { type: 'state_set', fields: { key: 'hp', val: '100' } },
+    { type: 'on_msg', fields: { msg: 'move' } },
+    { type: 'state_set', fields: { key: 'x', val: 'stan.x + 5' } },
+  ];
+  wPlayer.state = { x: '200', y: '150', hp: '100' };
+
+  const wEnemy = createActor('worker', 'Enemy_1', '👾', supEnt.id, 520, 280);
+  wEnemy.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'send_msg', fields: { to: 'Player', msg: 'attack', data: '10' } },
+  ];
+  wEnemy.state = { x: '400', y: '150', hp: '50' };
+
+  selectActor(root.id);
+}
+
+function initPresProject() {
+  // RootActor: Presentation (Conductor)
+  const root = createActor('root', 'Presentation', '🎬', null, 300, 40);
+  root.blocks = [
+    { type: 'on_start', fields: {} },
+    { type: 'pres_queue', fields: { order: 'Slide1, Slide2, Slide3' } },
+    { type: 'on_msg', fields: { msg: 'next' } },
+    { type: 'send_msg', fields: { to: 'następny', msg: 'play', data: '' } },
+  ];
+
+  // Supervisor: Slides
+  const supSlides = createActor('supervisor', 'Slides', '🛡', root.id, 120, 160);
+  supSlides.policy = 'one_for_one';
+
+  // Supervisor: Effects
+  const supFx = createActor('supervisor', 'Effects', '🛡', root.id, 440, 160);
+  supFx.policy = 'rest_for_one';
+
+  // Slide workers
+  const s1 = createActor('worker', 'Slide_1', '📄', supSlides.id, 60, 280);
+  s1.blocks = [
+    { type: 'on_msg', fields: { msg: 'play' } },
+    { type: 'look_title', fields: { text: 'Witajcie!' } },
+    { type: 'look_bg', fields: { color: '#1a1033' } },
+    { type: 'send_msg', fields: { to: 'Narrator', msg: 'say', data: 'Cześć, to jest slajd pierwszy' } },
+  ];
+
+  const s2 = createActor('worker', 'Slide_2', '📄', supSlides.id, 200, 280);
+  s2.blocks = [
+    { type: 'on_msg', fields: { msg: 'play' } },
+    { type: 'look_title', fields: { text: 'Czym są aktorzy?' } },
+    { type: 'look_bg', fields: { color: '#0a1a33' } },
+  ];
+
+  // Effect workers
+  const wNarr = createActor('worker', 'Narrator', '🗣', supFx.id, 380, 280);
+  wNarr.blocks = [
+    { type: 'on_msg', fields: { msg: 'say' } },
+    { type: 'print', fields: { val: 'wiadomość.data' } },
+  ];
+  wNarr.state = { głos: 'pl-PL', szybkość: '1.0' };
+
+  const wTrans = createActor('worker', 'Transitions', '✨', supFx.id, 500, 280);
+  wTrans.blocks = [
+    { type: 'on_msg', fields: { msg: 'fade' } },
+    { type: 'wait', fields: { ms: '300' } },
+  ];
+
+  selectActor(root.id);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ACTOR CRUD
+// ═══════════════════════════════════════════════════════════
+function createActor(type, name, icon, parentId, x, y) {
+  const id = mkId();
+  const actor = {
+    id, type, name, icon,
+    pid: mkPid(S.counter),
+    parentId,
+    children: [],
+    policy: 'one_for_one',
+    maxRestarts: 3,
+    color: type === 'root' ? '#00ff88' : type === 'supervisor' ? '#4488ff' : '#ffaa00',
+    x: x || 100 + Math.random() * 300,
+    y: y || 100 + Math.random() * 200,
+    mailbox: [],
+    state: {},
+    blocks: [],
+    status: 'alive',
+  };
+  S.actors[id] = actor;
+
+  if (parentId && S.actors[parentId]) {
+    S.actors[parentId].children.push(id);
+  }
+  return actor;
+}
+
+function spawnActor(type) {
+  const name = type === 'supervisor'
+    ? 'Sup_' + S.counter
+    : 'Actor_' + S.counter;
+  const icon = type === 'supervisor' ? '🛡' : '⬡';
+
+  // Find first supervisor or root to attach to
+  let parentId = null;
+  const root = Object.values(S.actors).find(a => a.type === 'root');
+  if (root) {
+    const sups = root.children.map(id => S.actors[id]).filter(a => a && a.type === 'supervisor');
+    parentId = sups.length ? sups[0].id : root.id;
+  }
+
+  const a = createActor(type, name, icon, parentId,
+    150 + Math.random() * 400, 150 + Math.random() * 200);
+  selectActor(a.id);
+  renderAll();
+  toast(`Spawnowano: ${name}`);
+}
+
+function removeActor(id) {
+  const a = S.actors[id];
+  if (!a || a.type === 'root') return;
+  // remove from parent
+  if (a.parentId && S.actors[a.parentId]) {
+    S.actors[a.parentId].children = S.actors[a.parentId].children.filter(c => c !== id);
+  }
+  // remove children recursively
+  [...(a.children || [])].forEach(cid => removeActor(cid));
+  delete S.actors[id];
+  if (S.selected === id) { S.selected = null; }
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BLOCK DEFINITIONS
+// ═══════════════════════════════════════════════════════════
+const BLOCK_CATS = [
+  { name: '⚡ Życie aktora', blocks: [
+    { type:'on_start',   icon:'🟢', label:'gdy uruchomiony',   cls:'bc-lifecycle', fields:[] },
+    { type:'on_stop',    icon:'🔴', label:'gdy zatrzymany',    cls:'bc-lifecycle', fields:[] },
+    { type:'self_stop',  icon:'💀', label:'zakończ się',        cls:'bc-lifecycle', fields:[] },
+    { type:'spawn',      icon:'🔄', label:'spawnuj aktora:',   cls:'bc-lifecycle', fields:[{k:'name',ph:'NazwaAktora',w:100}] },
+  ]},
+  { name:'📨 Wiadomości', blocks:[
+    { type:'on_msg',     icon:'📨', label:'gdy dostanę:',      cls:'bc-msg', fields:[{k:'msg',ph:'typ',w:70}] },
+    { type:'send_msg',   icon:'📤', label:'wyślij do:',        cls:'bc-msg', fields:[{k:'to',ph:'aktor',w:65},{k:'msg',ph:'typ',w:55},{k:'data',ph:'dane',w:65}] },
+    { type:'send_all',   icon:'📡', label:'wyślij do wszystkich:', cls:'bc-msg', fields:[{k:'msg',ph:'typ',w:70}] },
+    { type:'reply',      icon:'↩️', label:'odpowiedz:',         cls:'bc-msg', fields:[{k:'msg',ph:'typ',w:70},{k:'data',ph:'dane',w:70}] },
+  ]},
+  { name:'🧠 Stan', blocks:[
+    { type:'state_set',  icon:'📦', label:'stan.',              cls:'bc-state', fields:[{k:'key',ph:'pole',w:55}], mid:'=', fields2:[{k:'val',ph:'wartość',w:80}] },
+    { type:'state_get',  icon:'👁', label:'czytaj stan.',       cls:'bc-state', fields:[{k:'key',ph:'pole',w:80}] },
+    { type:'print',      icon:'🖨', label:'wypisz:',            cls:'bc-state', fields:[{k:'val',ph:'tekst lub stan.x',w:110}] },
+  ]},
+  { name:'🔁 Sterowanie', blocks:[
+    { type:'wait',       icon:'⏱', label:'czekaj:',            cls:'bc-control', fields:[{k:'ms',ph:'500',w:50}], suffix:'ms' },
+    { type:'repeat',     icon:'🔁', label:'powtórz:',           cls:'bc-control', fields:[{k:'n',ph:'3',w:40}], suffix:'razy' },
+    { type:'if_msg',     icon:'❓', label:'jeżeli wiadomość to:', cls:'bc-control', fields:[{k:'cond',ph:'tick',w:70}] },
+  ]},
+  { name:'🎮 Pętla Gry', blocks:[
+    { type:'clock_tick', icon:'⏱', label:'taktuj co:',         cls:'bc-clock', fields:[{k:'ms',ph:'16',w:45}], suffix:'ms' },
+    { type:'on_tick',    icon:'🕐', label:'na każdy tick',      cls:'bc-clock', fields:[] },
+  ]},
+  { name:'🎬 Prezentacja', blocks:[
+    { type:'pres_queue', icon:'📋', label:'kolejka slajdów:',   cls:'bc-pres', fields:[{k:'order',ph:'S1, S2, S3',w:120}] },
+    { type:'look_title', icon:'📛', label:'tytuł slajdu:',      cls:'bc-pres', fields:[{k:'text',ph:'Tytuł',w:120}] },
+    { type:'look_bg',    icon:'🎨', label:'kolor tła:',         cls:'bc-pres', fields:[{k:'color',ph:'#1a1033',w:80}] },
+    { type:'transition', icon:'✨', label:'przejście:',          cls:'bc-pres', fields:[{k:'type',ph:'fade',w:70}] },
+  ]},
+];
+
+const BLOCK_MAP = {};
+BLOCK_CATS.forEach(cat => cat.blocks.forEach(b => { BLOCK_MAP[b.type] = b; }));
+
+function buildPalette() {
+  const el = document.getElementById('block-palette');
+  el.innerHTML = '';
+  BLOCK_CATS.forEach(cat => {
+    const lbl = document.createElement('div');
+    lbl.className = 'bcat'; lbl.textContent = cat.name;
+    el.appendChild(lbl);
+    cat.blocks.forEach(bd => {
+      const b = document.createElement('div');
+      b.className = `bpal ${bd.cls}`;
+      b.draggable = true;
+      b.innerHTML = `${bd.icon} ${bd.label}`;
+      b.dataset.type = bd.type;
+      b.addEventListener('dragstart', ev => {
+        S.dragBlockType = bd.type;
+        S.dragScriptIdx = null;
+        ev.dataTransfer.effectAllowed = 'copy';
+      });
+      b.addEventListener('click', () => {
+        if (!S.selected) { toast('Wybierz najpierw aktora'); return; }
+        addBlockToActor(S.selected, bd.type);
+      });
+      el.appendChild(b);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BLOCK EDITING
+// ═══════════════════════════════════════════════════════════
+function addBlockToActor(actorId, type, fields={}, at=-1) {
+  const a = S.actors[actorId];
+  if (!a) return;
+  const def = BLOCK_MAP[type];
+  if (!def) return;
+  const allFields = [...(def.fields||[]), ...(def.fields2||[])];
+  const f = {};
+  allFields.forEach(fd => f[fd.k] = fields[fd.k] !== undefined ? fields[fd.k] : '');
+  const block = { type, fields: f };
+  if (at >= 0) a.blocks.splice(at, 0, block);
+  else a.blocks.push(block);
+  renderEditorBlocks();
+  updateStatus();
+}
+
+function removeBlockFromActor(actorId, idx) {
+  const a = S.actors[actorId];
+  if (!a) return;
+  a.blocks.splice(idx, 1);
+  renderEditorBlocks();
+}
+
+function updateBlockField(actorId, blockIdx, key, val) {
+  const a = S.actors[actorId];
+  if (a && a.blocks[blockIdx]) a.blocks[blockIdx].fields[key] = val;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RENDER EVERYTHING
+// ═══════════════════════════════════════════════════════════
+function renderAll() {
+  renderTree();
+  renderScene();
+  renderEditorBlocks();
+  renderStateEditor();
+  updateStatus();
+}
+
+// ─── TREE ───────────────────────────────────────────────────
+function renderTree() {
+  const scroll = document.getElementById('tree-scroll');
+  scroll.innerHTML = '';
+  const roots = Object.values(S.actors).filter(a => !a.parentId || a.type === 'root');
+  roots.forEach(a => scroll.appendChild(makeTreeNode(a)));
+
+  // Add-buttons
+  const row = document.createElement('div');
+  row.className = 'add-actor-row';
+  row.innerHTML = `
+    <button class="add-btn sup" onclick="spawnActor('supervisor')">＋ Supervisor</button>
+    <button class="add-btn worker" onclick="spawnActor('worker')">＋ Aktor</button>
+  `;
+  scroll.appendChild(row);
+
+  document.getElementById('tree-actor-count').textContent = Object.keys(S.actors).length + ' aktorów';
+}
+
+function makeTreeNode(actor) {
+  const wrap = document.createElement('div');
+  wrap.className = 'tree-node';
+
+  const row = document.createElement('div');
+  row.className = 'tree-node-row' +
+    (actor.type === 'root' ? ' root-node' : '') +
+    (S.selected === actor.id ? ' selected' : '');
+  row.onclick = () => selectActor(actor.id);
+
+  const statusCls = actor.type === 'supervisor' ? 'status-sup' :
+                    actor.status === 'alive' ? 'status-alive' : 'status-idle';
+  const badgeCls = actor.type === 'root' ? 'badge-root' : actor.type === 'supervisor' ? 'badge-sup' : 'badge-worker';
+  const badgeLbl = actor.type === 'root' ? 'ROOT' : actor.type === 'supervisor' ? 'SUP' : 'WORKER';
+
+  row.innerHTML = `
+    <div class="node-status ${statusCls}"></div>
+    <span class="node-icon">${actor.icon}</span>
+    <span class="node-name">${actor.name}</span>
+    <span class="node-badge ${badgeCls}">${badgeLbl}</span>
+    ${actor.type !== 'root' ? `<button style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px;font-size:11px" onclick="event.stopPropagation();removeActor('${actor.id}')" title="Usuń">✕</button>` : ''}
+  `;
+  wrap.appendChild(row);
+
+  // Supervisor policy pills
+  if (actor.type === 'supervisor') {
+    const policyRow = document.createElement('div');
+    policyRow.className = 'sup-policy';
+    ['one_for_one','one_for_all','rest_for_one'].forEach(p => {
+      const btn = document.createElement('button');
+      btn.className = 'policy-btn' + (actor.policy === p ? ' active' : '');
+      btn.textContent = p.replace(/_/g,'→').replace('one→for→one','1:1').replace('one→for→all','1:all').replace('rest→for→one','rest');
+      btn.title = p;
+      btn.onclick = (e) => { e.stopPropagation(); actor.policy = p; renderTree(); };
+      policyRow.appendChild(btn);
+    });
+    wrap.appendChild(policyRow);
+  }
+
+  // Children
+  if (actor.children && actor.children.length > 0) {
+    const childWrap = document.createElement('div');
+    childWrap.className = 'tree-node-children';
+    actor.children.forEach(cid => {
+      const child = S.actors[cid];
+      if (child) childWrap.appendChild(makeTreeNode(child));
+    });
+    wrap.appendChild(childWrap);
+  }
+  return wrap;
+}
+
+// ─── SCENE ──────────────────────────────────────────────────
+function renderScene() {
+  const area = document.getElementById('scene-area');
+  // Remove old actor bodies
+  area.querySelectorAll('.actor-body').forEach(el => el.remove());
+
+  const hint = document.getElementById('scene-hint');
+  const workers = Object.values(S.actors).filter(a => a.type === 'worker' || a.type === 'root');
+  hint.style.display = workers.length === 0 ? '' : 'none';
+
+  workers.forEach(a => {
+    const el = makeActorBody(a);
+    area.appendChild(el);
+  });
+}
+
+function makeActorBody(actor) {
+  const el = document.createElement('div');
+  el.className = 'actor-body' +
+    (actor.type === 'root' ? ' root-actor' : ' worker-actor') +
+    (S.selected === actor.id ? ' selected' : '');
+  el.id = 'body-' + actor.id;
+  el.style.left = actor.x + 'px';
+  el.style.top  = actor.y + 'px';
+
+  // Mailbox preview
+  const mailHtml = actor.mailbox.length > 0
+    ? actor.mailbox.slice(-3).map(m => `<span class="mail-msg">${m}</span>`).join('')
+    : '';
+
+  // State preview
+  const stateEntries = Object.entries(actor.state).slice(0,3);
+  const stateHtml = stateEntries.map(([k,v]) =>
+    `<span style="color:var(--worker)">${k}</span><span style="color:var(--muted)">:</span><span style="color:var(--text)"> ${v}</span>  `
+  ).join('');
+
+  el.innerHTML = `
+    <div class="actor-head">
+      <div class="actor-avatar" style="background:${actor.color}20;color:${actor.color}">${actor.icon}</div>
+      <div>
+        <div class="actor-title">${actor.name}</div>
+        <div class="actor-pid">${actor.pid}</div>
+      </div>
+    </div>
+    <div class="actor-mailbox">
+      <span class="mailbox-label">📬</span>
+      ${mailHtml || '<span style="color:var(--muted);font-size:9px">pusto</span>'}
+    </div>
+    ${stateEntries.length ? `<div class="actor-state">${stateHtml}</div>` : ''}
+  `;
+
+  el.onclick = () => selectActor(actor.id);
+
+  // Drag to move
+  let ox=0, oy=0, startX=0, startY=0;
+  el.addEventListener('mousedown', ev => {
+    if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'BUTTON') return;
+    ox = actor.x; oy = actor.y;
+    startX = ev.clientX; startY = ev.clientY;
+    const onMove = ev2 => {
+      actor.x = ox + ev2.clientX - startX;
+      actor.y = oy + ev2.clientY - startY;
+      el.style.left = actor.x + 'px';
+      el.style.top  = actor.y + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  return el;
+}
+
+// ─── EDITOR ────────────────────────────────────────────────
+function selectActor(id) {
+  S.selected = id;
+  const a = S.actors[id];
+  if (!a) return;
+
+  document.getElementById('ed-icon').textContent = a.icon;
+  document.getElementById('ed-name').textContent = a.name;
+  const b = document.getElementById('ed-badge');
+  b.textContent = a.type.toUpperCase();
+  b.className = 'node-badge ' + (a.type==='root'?'badge-root':a.type==='supervisor'?'badge-sup':'badge-worker');
+  document.getElementById('editor-actor-type').textContent = a.pid + ' · ' + (a.type==='root'?'Aktor Nadrzędny':a.type==='supervisor'?'Nadzorca':' Worker');
+
+  renderEditorBlocks();
+  renderStateEditor();
+  renderTree();
+  renderScene();
+}
+
+function renderEditorBlocks() {
+  const container = document.getElementById('block-script');
+  if (!S.selected || !S.actors[S.selected]) {
+    container.innerHTML = '<div id="block-script-empty">Wybierz aktora i przeciągaj<br>bloki z zakładki <strong>Paleta</strong></div>';
+    return;
+  }
+  const a = S.actors[S.selected];
+  container.innerHTML = '';
+
+  if (a.blocks.length === 0) {
+    container.innerHTML = '<div id="block-script-empty">Brak bloków.<br>Dodaj z zakładki <strong>Paleta</strong></div>';
+    return;
+  }
+
+  a.blocks.forEach((block, idx) => {
+    const dz = makeScriptDz(idx);
+    container.appendChild(dz);
+
+    const def = BLOCK_MAP[block.type];
+    if (!def) return;
+
+    const el = document.createElement('div');
+    el.className = `script-block ${def.cls}`;
+    el.dataset.idx = idx;
+
+    let html = `<span style="pointer-events:none">${def.icon} ${def.label}</span>`;
+    (def.fields||[]).forEach(fd => {
+      html += `<input class="script-field" value="${esc(block.fields[fd.k]||'')}"
+        placeholder="${fd.ph}" style="width:${fd.w||70}px"
+        onclick="event.stopPropagation()"
+        oninput="updateBlockField('${a.id}',${idx},'${fd.k}',this.value)">`;
+    });
+    if (def.mid) html += `<span style="opacity:.5">${def.mid}</span>`;
+    (def.fields2||[]).forEach(fd => {
+      html += `<input class="script-field" value="${esc(block.fields[fd.k]||'')}"
+        placeholder="${fd.ph}" style="width:${fd.w||70}px"
+        onclick="event.stopPropagation()"
+        oninput="updateBlockField('${a.id}',${idx},'${fd.k}',this.value)">`;
+    });
+    if (def.suffix) html += `<span style="opacity:.5">${def.suffix}</span>`;
+    html += `<button class="script-block-rm" onclick="removeBlockFromActor('${a.id}',${idx})">✕</button>`;
+    el.innerHTML = html;
+
+    // drag reorder
+    el.draggable = true;
+    el.addEventListener('dragstart', ev => {
+      S.dragBlockType = null;
+      S.dragScriptIdx = idx;
+      ev.dataTransfer.effectAllowed = 'move';
+    });
+
+    container.appendChild(el);
+  });
+  // final drop zone
+  container.appendChild(makeScriptDz(a.blocks.length));
+}
+
+function makeScriptDz(idx) {
+  const dz = document.createElement('div');
+  dz.className = 'script-dz';
+  dz.addEventListener('dragover', ev => { ev.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', ev => {
+    ev.preventDefault(); dz.classList.remove('over');
+    if (!S.selected) return;
+    if (S.dragBlockType) {
+      addBlockToActor(S.selected, S.dragBlockType, {}, idx);
+      S.dragBlockType = null;
+    } else if (S.dragScriptIdx !== null && S.dragScriptIdx !== idx) {
+      const a = S.actors[S.selected];
+      const [moved] = a.blocks.splice(S.dragScriptIdx, 1);
+      const to = idx > S.dragScriptIdx ? idx - 1 : idx;
+      a.blocks.splice(to, 0, moved);
+      S.dragScriptIdx = null;
+      renderEditorBlocks();
+    }
+  });
+  return dz;
+}
+
+function onSceneDrop(ev) {
+  ev.preventDefault();
+  if (S.dragBlockType && S.selected) {
+    addBlockToActor(S.selected, S.dragBlockType);
+    S.dragBlockType = null;
+  }
+}
+
+function renderStateEditor() {
+  const rows = document.getElementById('state-rows');
+  rows.innerHTML = '';
+  if (!S.selected || !S.actors[S.selected]) return;
+  const state = S.actors[S.selected].state;
+  Object.entries(state).forEach(([k, v], i) => {
+    const row = document.createElement('div');
+    row.className = 'state-row';
+    row.innerHTML = `
+      <input class="state-key" value="${esc(k)}" placeholder="pole"
+        oninput="updateStateKey('${S.selected}','${k}',this.value)">
+      <input class="state-val" value="${esc(v)}" placeholder="wartość"
+        oninput="updateStateVal('${S.selected}','${k}',this.value)">
+      <button class="state-rm" onclick="removeStateRow('${S.selected}','${k}')">✕</button>
+    `;
+    rows.appendChild(row);
+  });
+}
+
+function addStateRow() {
+  if (!S.selected) return;
+  const a = S.actors[S.selected];
+  const key = 'pole' + Object.keys(a.state).length;
+  a.state[key] = '0';
+  renderStateEditor();
+}
+
+function updateStateKey(actorId, oldKey, newKey) {
+  const a = S.actors[actorId];
+  if (!a || newKey === oldKey) return;
+  const val = a.state[oldKey];
+  delete a.state[oldKey];
+  a.state[newKey] = val;
+}
+
+function updateStateVal(actorId, key, val) {
+  const a = S.actors[actorId];
+  if (a) a.state[key] = val;
+}
+
+function removeStateRow(actorId, key) {
+  const a = S.actors[actorId];
+  if (a) { delete a.state[key]; renderStateEditor(); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RUNTIME: TICK + MESSAGE PASSING
+// ═══════════════════════════════════════════════════════════
+function toggleRun() {
+  S.running = !S.running;
+  const btn = document.getElementById('run-btn');
+  if (S.running) {
+    btn.textContent = '⏹ Stop';
+    btn.classList.add('running');
+    document.getElementById('sb-tick').textContent = 'działa…';
+    document.getElementById('sb-tick').style.color = 'var(--root)';
+    S.tickCount = 0;
+    // Reset mailboxes
+    Object.values(S.actors).forEach(a => { a.mailbox = []; a.status = 'alive'; });
+    startRuntime();
+  } else {
+    btn.textContent = '▶ Uruchom';
+    btn.classList.remove('running');
+    document.getElementById('sb-tick').textContent = `zatrzymany (${S.tickCount} ticków)`;
+    document.getElementById('sb-tick').style.color = 'var(--muted)';
+    clearInterval(S.tickInterval);
+    renderScene();
+  }
+}
+
+function startRuntime() {
+  const root = Object.values(S.actors).find(a => a.type === 'root');
+  if (!root) { toast('Brak RootActor!'); toggleRun(); return; }
+
+  // Execute on_start blocks
+  Object.values(S.actors).forEach(a => {
+    a.blocks.filter(b => b.type === 'on_start').forEach(() => {
+      // Apply state_set blocks after on_start (simplified: first block group)
+    });
+  });
+
+  const tickMs = S.projectMode === 'game' ? 400 : 1200;
+  S.tickInterval = setInterval(() => {
+    S.tickCount++;
+    document.getElementById('sb-tick').textContent = `tick #${S.tickCount}`;
+
+    // Flash root
+    flashActor(root.id, 'tick');
+
+    // Send 'tick' from root to all workers
+    const workers = Object.values(S.actors).filter(a => a.type === 'worker');
+
+    if (S.projectMode === 'game') {
+      workers.forEach((w, i) => {
+        setTimeout(() => {
+          deliverMsg(root.id, w.id, 'tick', '');
+        }, i * 80);
+      });
+    } else {
+      // Presentation: conductor sends to active slide
+      const activeSlide = workers.find(w => w.name.startsWith('Slide'));
+      if (activeSlide) {
+        setTimeout(() => deliverMsg(root.id, activeSlide.id, 'play', ''), 100);
+      }
+    }
+
+    // Process on_msg blocks for workers
+    workers.forEach(w => {
+      if (w.mailbox.length > 0) {
+        processActorMessages(w);
+      }
+    });
+
+    updateStatus();
+  }, tickMs);
+}
+
+function deliverMsg(fromId, toId, msgType, data) {
+  const from = S.actors[fromId];
+  const to   = S.actors[toId];
+  if (!from || !to) return;
+  S.msgCount++;
+
+  // Add to mailbox
+  to.mailbox = [...to.mailbox.slice(-4), msgType];
+
+  // Animate
+  if (S.showMsgs) animateMsg(fromId, toId, msgType);
+
+  // Update body
+  const bodyEl = document.getElementById('body-' + toId);
+  if (bodyEl) {
+    bodyEl.classList.add('receiving');
+    setTimeout(() => bodyEl.classList.remove('receiving'), 350);
+    // Update mailbox display
+    const mb = bodyEl.querySelector('.actor-mailbox');
+    if (mb) {
+      mb.innerHTML = `<span class="mailbox-label">📬</span>` +
+        to.mailbox.slice(-3).map(m => `<span class="mail-msg">${m}</span>`).join('');
+    }
+  }
+}
+
+function processActorMessages(actor) {
+  if (!actor.mailbox.length) return;
+  const msg = actor.mailbox[0];
+
+  actor.blocks.forEach(b => {
+    if (b.type === 'on_msg' && b.fields.msg === msg) {
+      // Execute following blocks until next on_msg
+      executeAfterOnMsg(actor, b);
+    }
+    if (b.type === 'on_tick' && msg === 'tick') {
+      executeAfterOnMsg(actor, b);
+    }
+  });
+
+  // Drain one message
+  actor.mailbox.shift();
+  // Update scene body
+  const bodyEl = document.getElementById('body-' + actor.id);
+  if (bodyEl) {
+    const mb = bodyEl.querySelector('.actor-mailbox');
+    if (mb) {
+      mb.innerHTML = `<span class="mailbox-label">📬</span>` +
+        (actor.mailbox.length
+          ? actor.mailbox.slice(-3).map(m => `<span class="mail-msg">${m}</span>`).join('')
+          : '<span style="color:var(--muted);font-size:9px">pusto</span>');
+    }
+  }
+}
+
+function executeAfterOnMsg(actor, triggerBlock) {
+  const startIdx = actor.blocks.indexOf(triggerBlock) + 1;
+  for (let i = startIdx; i < actor.blocks.length; i++) {
+    const b = actor.blocks[i];
+    if (b.type === 'on_msg' || b.type === 'on_start' || b.type === 'on_tick') break;
+
+    if (b.type === 'state_set') {
+      const val = b.fields.val || '0';
+      // Simple eval: if it contains + or -, try to compute numerically
+      try {
+        const resolved = val.replace(/stan\.(\w+)/g, (_, k) => actor.state[k] || '0');
+        actor.state[b.fields.key] = String(eval(resolved));
+      } catch { actor.state[b.fields.key] = val; }
+      flashActor(actor.id, 'state');
+      // Update state display in body
+      updateBodyState(actor);
+    }
+
+    if (b.type === 'send_msg') {
+      const target = Object.values(S.actors).find(a => a.name === b.fields.to);
+      if (target) setTimeout(() => deliverMsg(actor.id, target.id, b.fields.msg, b.fields.data), 100);
+    }
+
+    if (b.type === 'send_all') {
+      Object.values(S.actors)
+        .filter(a => a.type === 'worker' && a.id !== actor.id)
+        .forEach((t, i) => setTimeout(() => deliverMsg(actor.id, t.id, b.fields.msg, ''), i * 60));
+    }
+
+    if (b.type === 'self_stop') {
+      actor.status = 'dead';
+      const bodyEl = document.getElementById('body-' + actor.id);
+      if (bodyEl) { bodyEl.style.opacity = '0.3'; bodyEl.style.filter = 'grayscale(1)'; }
+    }
+
+    if (b.type === 'spawn') {
+      const newA = createActor('worker', b.fields.name || 'New', '⬡', actor.parentId,
+        actor.x + 80 + Math.random() * 60, actor.y + Math.random() * 60);
+      renderAll();
+      toast(`Spawnowano: ${newA.name}`);
+    }
+  }
+}
+
+function updateBodyState(actor) {
+  const bodyEl = document.getElementById('body-' + actor.id);
+  if (!bodyEl) return;
+  const stateEl = bodyEl.querySelector('.actor-state');
+  const entries = Object.entries(actor.state).slice(0, 3);
+  if (stateEl && entries.length) {
+    stateEl.innerHTML = entries.map(([k,v]) =>
+      `<span style="color:var(--worker)">${k}</span><span style="color:var(--muted)">:</span><span style="color:var(--text)"> ${v}</span>  `
+    ).join('');
+  }
+}
+
+function flashActor(id, type) {
+  const el = document.getElementById('body-' + id);
+  if (!el) return;
+  const cls = type === 'tick' ? 'tick-flash' : 'receiving';
+  el.classList.add(cls);
+  setTimeout(() => el.classList.remove(cls), 200);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MESSAGE ANIMATION (SVG + flying dot)
+// ═══════════// ═══════════════════════════════════════════════════════════
+function animateMsg(fromId, toId, label) {
+  const fromEl = document.getElementById('body-' + fromId);
+  const toEl   = document.getElementById('body-' + toId);
+  if (!fromEl || !toEl) return;
+
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+
+  const dot = document.createElement('div');
+  dot.className = 'msg-dot';
+  dot.style.left = (fr.left + fr.width/2) + 'px';
+  dot.style.top  = (fr.top  + fr.height/2) + 'px';
+  dot.title = label;
+  document.body.appendChild(dot);
+
+  const dx = (tr.left + tr.width/2)  - (fr.left + fr.width/2);
+  const dy = (tr.top  + tr.height/2) - (fr.top  + fr.height/2);
+
+  dot.animate([
+    { transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+    { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.6)`, opacity: 0 },
+  ], { duration: 480, easing: 'cubic-bezier(.4,0,.2,1)' }).onfinish = () => dot.remove();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UI HELPERS
+// ═══════════════════════════════════════════════════════════
+function setView(v) {
+  S.view = v;
+  document.getElementById('view-scene-btn').classList.toggle('active', v==='scene');
+  document.getElementById('view-code-btn').classList.toggle('active', v==='code');
+  // For now code view just shows generated pseudocode toast
+  if (v === 'code') {
+    toast('Widok kodu — wkrótce dostępny');
+    S.view = 'scene';
+    document.getElementById('view-scene-btn').classList.add('active');
+    document.getElementById('view-code-btn').classList.remove('active');
+  }
+  document.getElementById('sb-mode').textContent = 'Tryb: ' + (v==='scene'?'Scena':'Kod');
+}
+
+function setEdTab(tab) {
+  S.edTab = tab;
+  ['blocks','palette','state'].forEach(t => {
+    document.getElementById('etab-' + t).classList.toggle('active', t===tab);
+    document.getElementById('tab-' + t).style.display = t===tab ? '' : 'none';
+  });
+}
+
+function toggleMsgVis() {
+  S.showMsgs = document.getElementById('show-msgs').checked;
+}
+
+function updateStatus() {
+  const count = Object.keys(S.actors).length;
+  document.getElementById('sb-actors').textContent = count + ' aktorów';
+  document.getElementById('sb-msgs').textContent   = S.msgCount + ' wiadomości';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(window._t);
+  window._t = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'F5') { e.preventDefault(); toggleRun(); }
+  if (e.key === 'Escape' && S.running) toggleRun();
+  if (e.key === 'Delete' && S.selected) {
+    const a = S.actors[S.selected];
+    if (a && a.type !== 'root') { removeActor(S.selected); toast('Aktor usunięty'); }
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════
+selectMode('game');
+</script>
+</body>
+</html>
