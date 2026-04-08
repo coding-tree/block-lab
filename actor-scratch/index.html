@@ -509,6 +509,9 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       </div>
     </div>
     <button class="pm-start game" id="pm-start-btn" onclick="startProject()">Utwórz projekt →</button>
+    <div style="text-align:center;margin-top:8px;">
+      <button onclick="initMarioProject()" style="background:none;border:1px solid var(--worker);color:var(--worker);padding:6px 16px;border-radius:6px;font-family:var(--mono);font-size:12px;cursor:pointer;">🍄 Mario Bros Demo</button>
+    </div>
   </div>
 </div>
 
@@ -788,6 +791,156 @@ function initPresProject() {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  KEYBOARD INPUT FOR on_key BLOCKS
+// ═══════════════════════════════════════════════════════════
+const KEYS_DOWN = {};
+const KEYS_PRESSED = {};  // keys pressed since last tick
+document.addEventListener('keydown', e => {
+  KEYS_DOWN[e.key] = true;
+  KEYS_PRESSED[e.key] = true;
+});
+document.addEventListener('keyup', e => { KEYS_DOWN[e.key] = false; });
+
+function processKeyBlocks() {
+  // Merge: keys currently held OR pressed since last tick
+  const activeKeys = { ...KEYS_DOWN, ...KEYS_PRESSED };
+  // Clear pressed queue
+  Object.keys(KEYS_PRESSED).forEach(k => delete KEYS_PRESSED[k]);
+
+  Object.values(S.actors).forEach(actor => {
+    actor.blocks.forEach(block => {
+      if (block.type === 'on_key' && block.fields.key && activeKeys[block.fields.key]) {
+        executeAfterOnMsg(actor, block);
+      }
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MARIO BROS TEMPLATE
+// ═══════════════════════════════════════════════════════════
+function initMarioProject() {
+  S.projectMode = 'game';
+  document.getElementById('project-modal').classList.add('hidden');
+  const badge = document.getElementById('mode-badge');
+  badge.textContent = '🎮 Mario Bros';
+  badge.className = 'project-mode-badge badge-game';
+
+  // Root: Game Clock
+  const root = createActor('root', 'Game', '🎮', null, 300, 20);
+  root.blocks = [
+    { type: 'on_start', fields: {} },
+    { type: 'clock_tick', fields: { ms: '800' } },
+    { type: 'send_all', fields: { msg: 'tick' } },
+  ];
+
+  // Supervisor: World
+  const supWorld = createActor('supervisor', 'World', '🛡', root.id, 80, 120);
+  supWorld.policy = 'one_for_one';
+
+  // Supervisor: Systems
+  const supSys = createActor('supervisor', 'Systems', '🛡', root.id, 300, 120);
+  supSys.policy = 'one_for_one';
+
+  // Supervisor: Enemies
+  const supEnem = createActor('supervisor', 'Enemies', '🛡', root.id, 550, 120);
+  supEnem.policy = 'one_for_one';
+
+  // Physics — applies gravity and ground check, sends to Mario
+  const physics = createActor('worker', 'Physics', '⚙️', supSys.id, 300, 210);
+  physics.state = { gravity: '2', ground: '300', frame: '0' };
+  physics.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'state_set', fields: { key: 'frame', val: 'Number(stan.frame) + 1' } },
+    { type: 'send_msg', fields: { to: 'Mario', msg: 'gravity', data: '', color: '#66ccff' } },
+    { type: 'send_msg', fields: { to: 'Mario', msg: 'ground_check', data: '', color: '#66ffcc' } },
+  ];
+
+  // Input — reads keyboard, sends messages to Mario
+  const input = createActor('worker', 'Input', '⌨️', supSys.id, 170, 210);
+  input.state = {};
+  input.blocks = [
+    { type: 'on_key', fields: { key: 'ArrowRight' } },
+    { type: 'send_msg', fields: { to: 'Mario', msg: 'move_right', data: '', color: '#88ff88' } },
+    { type: 'on_key', fields: { key: 'ArrowLeft' } },
+    { type: 'send_msg', fields: { to: 'Mario', msg: 'move_left', data: '', color: '#88ff88' } },
+    { type: 'on_key', fields: { key: ' ' } },
+    { type: 'send_msg', fields: { to: 'Mario', msg: 'jump', data: '', color: '#ffdd00' } },
+  ];
+
+  // Mario (player) — reacts to messages from Input, Physics, and enemies
+  const mario = createActor('worker', 'Mario', '🟥', supWorld.id, 60, 320);
+  mario.state = { x: '100', y: '300', vy: '0', grounded: '1', hp: '3' };
+  mario.blocks = [
+    { type: 'on_msg', fields: { msg: 'gravity' } },
+    { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.vy) + 2' } },
+    { type: 'state_set', fields: { key: 'y', val: 'Number(stan.y) + Number(stan.vy)' } },
+    { type: 'on_msg', fields: { msg: 'ground_check' } },
+    { type: 'state_set', fields: { key: 'grounded', val: 'Number(stan.y) >= 300 && Number(stan.vy) >= 0 ? 1 : 0' } },
+    { type: 'state_set', fields: { key: 'y', val: 'Number(stan.grounded) === 1 ? Math.min(Number(stan.y), 300) : stan.y' } },
+    { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.grounded) === 1 ? 0 : stan.vy' } },
+    { type: 'on_msg', fields: { msg: 'move_right' } },
+    { type: 'state_set', fields: { key: 'x', val: 'Number(stan.x) + 5' } },
+    { type: 'send_msg', fields: { to: 'Score', msg: 'step', data: '', color: '#88aaff' } },
+    { type: 'on_msg', fields: { msg: 'move_left' } },
+    { type: 'state_set', fields: { key: 'x', val: 'Math.max(0, Number(stan.x) - 5)' } },
+    { type: 'on_msg', fields: { msg: 'jump' } },
+    { type: 'state_set', fields: { key: 'vy', val: 'Number(stan.grounded) === 1 ? -14 : stan.vy' } },
+    { type: 'state_set', fields: { key: 'grounded', val: '0' } },
+    { type: 'on_msg', fields: { msg: 'hit' } },
+    { type: 'state_set', fields: { key: 'hp', val: 'Number(stan.hp) - 1' } },
+    { type: 'send_msg', fields: { to: 'Score', msg: 'damage', data: '', color: '#ff6600' } },
+  ];
+
+  // Score — tracks points and coins
+  const score = createActor('worker', 'Score', '⭐', supWorld.id, 60, 440);
+  score.state = { points: '0', coins: '0', steps: '0' };
+  score.blocks = [
+    { type: 'on_msg', fields: { msg: 'coin' } },
+    { type: 'state_set', fields: { key: 'coins', val: 'Number(stan.coins) + 1' } },
+    { type: 'state_set', fields: { key: 'points', val: 'Number(stan.points) + 100' } },
+    { type: 'on_msg', fields: { msg: 'step' } },
+    { type: 'state_set', fields: { key: 'steps', val: 'Number(stan.steps) + 1' } },
+    { type: 'state_set', fields: { key: 'points', val: 'Number(stan.points) + 10' } },
+    { type: 'on_msg', fields: { msg: 'damage' } },
+    { type: 'state_set', fields: { key: 'points', val: 'Math.max(0, Number(stan.points) - 50)' } },
+  ];
+
+  // Coin — on tick, randomly sends 'coin' to Score
+  const coin = createActor('worker', 'Coin', '🪙', supWorld.id, 180, 440);
+  coin.state = { collected: '0' };
+  coin.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'state_set', fields: { key: 'collected', val: 'Math.random() < 0.3 ? Number(stan.collected) + 1 : stan.collected' } },
+    { type: 'send_msg', fields: { to: 'Score', msg: 'coin', data: '', color: '#ffdd00' } },
+  ];
+
+  // Goomba — patrols, sends 'hit' to Mario on tick
+  const goomba = createActor('worker', 'Goomba', '🍄', supEnem.id, 540, 240);
+  goomba.state = { pos: '0', dir: '1', attacks: '0' };
+  goomba.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'state_set', fields: { key: 'pos', val: 'Number(stan.pos) + Number(stan.dir)' } },
+    { type: 'state_set', fields: { key: 'dir', val: 'Number(stan.pos) > 5 ? -1 : Number(stan.pos) < -5 ? 1 : stan.dir' } },
+    { type: 'send_msg', fields: { to: 'Mario', msg: 'hit', data: '10', color: '#ff4444' } },
+    { type: 'state_set', fields: { key: 'attacks', val: 'Number(stan.attacks) + 1' } },
+  ];
+
+  // Koopa — slower enemy, sends 'hit' every other tick
+  const koopa = createActor('worker', 'Koopa', '🐢', supEnem.id, 660, 350);
+  koopa.state = { pos: '0', cooldown: '0' };
+  koopa.blocks = [
+    { type: 'on_msg', fields: { msg: 'tick' } },
+    { type: 'state_set', fields: { key: 'cooldown', val: 'Number(stan.cooldown) + 1' } },
+    { type: 'state_set', fields: { key: 'pos', val: 'Number(stan.pos) + 1' } },
+  ];
+
+  buildPalette();
+  selectActor(mario.id);
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════════════
 //  ACTOR CRUD
 // ═══════════════════════════════════════════════════════════
 function createActor(type, name, icon, parentId, x, y) {
@@ -862,8 +1015,8 @@ const BLOCK_CATS = [
   ]},
   { name:'📨 Wiadomości', blocks:[
     { type:'on_msg',     icon:'📨', label:'gdy dostanę:',      cls:'bc-msg', fields:[{k:'msg',ph:'typ',w:70}] },
-    { type:'send_msg',   icon:'📤', label:'wyślij do:',        cls:'bc-msg', fields:[{k:'to',ph:'aktor',w:65},{k:'msg',ph:'typ',w:55},{k:'data',ph:'dane',w:65}] },
-    { type:'send_all',   icon:'📡', label:'wyślij do wszystkich:', cls:'bc-msg', fields:[{k:'msg',ph:'typ',w:70}] },
+    { type:'send_msg',   icon:'📤', label:'wyślij do:',        cls:'bc-msg', fields:[{k:'to',ph:'aktor',w:65},{k:'msg',ph:'typ',w:55},{k:'data',ph:'dane',w:55},{k:'color',ph:'#ff55ff',w:50,isColor:true}] },
+    { type:'send_all',   icon:'📡', label:'wyślij do wszystkich:', cls:'bc-msg', fields:[{k:'msg',ph:'typ',w:60},{k:'color',ph:'#00ffff',w:50,isColor:true}] },
     { type:'reply',      icon:'↩️', label:'odpowiedz:',         cls:'bc-msg', fields:[{k:'msg',ph:'typ',w:70},{k:'data',ph:'dane',w:70}] },
   ]},
   { name:'🧠 Stan', blocks:[
@@ -879,6 +1032,7 @@ const BLOCK_CATS = [
   { name:'🎮 Pętla Gry', blocks:[
     { type:'clock_tick', icon:'⏱', label:'taktuj co:',         cls:'bc-clock', fields:[{k:'ms',ph:'16',w:45}], suffix:'ms' },
     { type:'on_tick',    icon:'🕐', label:'na każdy tick',      cls:'bc-clock', fields:[] },
+    { type:'on_key',     icon:'⌨️', label:'gdy klawisz:',       cls:'bc-clock', fields:[{k:'key',ph:'ArrowRight',w:90}] },
   ]},
   { name:'🎬 Prezentacja', blocks:[
     { type:'pres_queue', icon:'📋', label:'kolejka slajdów:',   cls:'bc-pres', fields:[{k:'order',ph:'S1, S2, S3',w:120}] },
@@ -1152,10 +1306,18 @@ function renderEditorBlocks() {
 
     let html = `<span style="pointer-events:none">${def.icon} ${def.label}</span>`;
     (def.fields||[]).forEach(fd => {
-      html += `<input class="script-field" value="${esc(block.fields[fd.k]||'')}"
-        placeholder="${fd.ph}" style="width:${fd.w||70}px"
-        onclick="event.stopPropagation()"
-        oninput="updateBlockField('${a.id}',${idx},'${fd.k}',this.value)">`;
+      if (fd.isColor) {
+        const colorVal = block.fields[fd.k] || fd.ph || '#ff55ff';
+        html += `<input type="color" class="script-field" value="${esc(colorVal)}"
+          style="width:${fd.w||36}px;height:22px;padding:1px;cursor:pointer;border:1px solid #555;border-radius:4px;"
+          onclick="event.stopPropagation()"
+          oninput="updateBlockField('${a.id}',${idx},'${fd.k}',this.value)">`;
+      } else {
+        html += `<input class="script-field" value="${esc(block.fields[fd.k]||'')}"
+          placeholder="${fd.ph}" style="width:${fd.w||70}px"
+          onclick="event.stopPropagation()"
+          oninput="updateBlockField('${a.id}',${idx},'${fd.k}',this.value)">`;
+      }
     });
     if (def.mid) html += `<span style="opacity:.5">${def.mid}</span>`;
     (def.fields2||[]).forEach(fd => {
@@ -1294,7 +1456,9 @@ function startRuntime() {
     });
   });
 
-  const tickMs = S.projectMode === 'game' ? 400 : 1200;
+  // Check if root has clock_tick block with custom ms
+  const clockBlock = root.blocks.find(b => b.type === 'clock_tick');
+  const tickMs = clockBlock?.fields?.ms ? Number(clockBlock.fields.ms) || 400 : (S.projectMode === 'game' ? 400 : 1200);
   S.tickInterval = setInterval(() => {
     S.tickCount++;
     document.getElementById('sb-tick').textContent = `tick #${S.tickCount}`;
@@ -1305,21 +1469,29 @@ function startRuntime() {
     // Send 'tick' from root to all workers
     const workers = Object.values(S.actors).filter(a => a.type === 'worker');
 
+    // Deliver tick/play messages synchronously
     if (S.projectMode === 'game') {
-      workers.forEach((w, i) => {
-        setTimeout(() => {
-          deliverMsg(root.id, w.id, 'tick', '');
-        }, i * 80);
+      workers.forEach(w => {
+        deliverMsg(root.id, w.id, 'tick', '');
       });
     } else {
-      // Presentation: conductor sends to active slide
       const activeSlide = workers.find(w => w.name.startsWith('Slide'));
       if (activeSlide) {
-        setTimeout(() => deliverMsg(root.id, activeSlide.id, 'play', ''), 100);
+        deliverMsg(root.id, activeSlide.id, 'play', '');
       }
     }
 
-    // Process on_msg blocks for workers
+    // Process tick messages first (physics, enemies, etc.)
+    workers.forEach(w => {
+      if (w.mailbox.length > 0) {
+        processActorMessages(w);
+      }
+    });
+
+    // Process keyboard after tick (so jump overrides gravity)
+    processKeyBlocks();
+
+    // Process any new messages from key actions
     workers.forEach(w => {
       if (w.mailbox.length > 0) {
         processActorMessages(w);
@@ -1330,17 +1502,17 @@ function startRuntime() {
   }, tickMs);
 }
 
-function deliverMsg(fromId, toId, msgType, data) {
+function deliverMsg(fromId, toId, msgType, data, color) {
   const from = S.actors[fromId];
   const to   = S.actors[toId];
   if (!from || !to) return;
   S.msgCount++;
 
   // Add to mailbox
-  to.mailbox = [...to.mailbox.slice(-4), msgType];
+  to.mailbox = [...to.mailbox.slice(-16), msgType];
 
   // Animate
-  if (S.showMsgs) animateMsg(fromId, toId, msgType);
+  if (S.showMsgs) animateMsg(fromId, toId, msgType, color);
 
   // Update body
   const bodyEl = document.getElementById('body-' + toId);
@@ -1358,20 +1530,20 @@ function deliverMsg(fromId, toId, msgType, data) {
 
 function processActorMessages(actor) {
   if (!actor.mailbox.length) return;
-  const msg = actor.mailbox[0];
+  // Process all messages in mailbox this tick
+  const msgs = [...actor.mailbox];
+  actor.mailbox = [];
 
-  actor.blocks.forEach(b => {
-    if (b.type === 'on_msg' && b.fields.msg === msg) {
-      // Execute following blocks until next on_msg
-      executeAfterOnMsg(actor, b);
-    }
-    if (b.type === 'on_tick' && msg === 'tick') {
-      executeAfterOnMsg(actor, b);
-    }
+  msgs.forEach(msg => {
+    actor.blocks.forEach(b => {
+      if (b.type === 'on_msg' && b.fields.msg === msg) {
+        executeAfterOnMsg(actor, b);
+      }
+      if (b.type === 'on_tick' && msg === 'tick') {
+        executeAfterOnMsg(actor, b);
+      }
+    });
   });
-
-  // Drain one message
-  actor.mailbox.shift();
   // Update scene body
   const bodyEl = document.getElementById('body-' + actor.id);
   if (bodyEl) {
@@ -1389,7 +1561,7 @@ function executeAfterOnMsg(actor, triggerBlock) {
   const startIdx = actor.blocks.indexOf(triggerBlock) + 1;
   for (let i = startIdx; i < actor.blocks.length; i++) {
     const b = actor.blocks[i];
-    if (b.type === 'on_msg' || b.type === 'on_start' || b.type === 'on_tick') break;
+    if (b.type === 'on_msg' || b.type === 'on_start' || b.type === 'on_tick' || b.type === 'on_key') break;
 
     if (b.type === 'state_set') {
       const val = b.fields.val || '0';
@@ -1405,13 +1577,14 @@ function executeAfterOnMsg(actor, triggerBlock) {
 
     if (b.type === 'send_msg') {
       const target = Object.values(S.actors).find(a => a.name === b.fields.to);
-      if (target) setTimeout(() => deliverMsg(actor.id, target.id, b.fields.msg, b.fields.data), 100);
+      if (target) deliverMsg(actor.id, target.id, b.fields.msg, b.fields.data, b.fields.color);
     }
 
     if (b.type === 'send_all') {
+      const msgColor = b.fields.color;
       Object.values(S.actors)
         .filter(a => a.type === 'worker' && a.id !== actor.id)
-        .forEach((t, i) => setTimeout(() => deliverMsg(actor.id, t.id, b.fields.msg, ''), i * 60));
+        .forEach((t, i) => setTimeout(() => deliverMsg(actor.id, t.id, b.fields.msg, '', msgColor), i * 60));
     }
 
     if (b.type === 'self_stop') {
@@ -1452,7 +1625,7 @@ function flashActor(id, type) {
 // ═══════════════════════════════════════════════════════════
 //  MESSAGE ANIMATION (SVG + flying dot)
 // ═══════════// ═══════════════════════════════════════════════════════════
-function animateMsg(fromId, toId, label) {
+function animateMsg(fromId, toId, label, color) {
   const fromEl = document.getElementById('body-' + fromId);
   const toEl   = document.getElementById('body-' + toId);
   if (!fromEl || !toEl) return;
@@ -1460,10 +1633,13 @@ function animateMsg(fromId, toId, label) {
   const fr = fromEl.getBoundingClientRect();
   const tr = toEl.getBoundingClientRect();
 
+  const c = color || '#ff55ff';
   const dot = document.createElement('div');
   dot.className = 'msg-dot';
   dot.style.left = (fr.left + fr.width/2) + 'px';
   dot.style.top  = (fr.top  + fr.height/2) + 'px';
+  dot.style.background = c;
+  dot.style.boxShadow = `0 0 8px ${c}`;
   dot.title = label;
   document.body.appendChild(dot);
 
