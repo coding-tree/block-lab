@@ -668,9 +668,12 @@
       👁 Pokaż zmienną: <em style="opacity:.6">nazwa</em>
     </div>
 
-    <h3>🛑 Debug</h3>
+    <h3>⏸ Pauza</h3>
     <div class="block-template b-debug" draggable="true" data-type="debug-stop">
-      🛑 Zatrzymaj (debug): <em style="opacity:.6">checkpoint</em>
+      ⏸ Pauza: <em style="opacity:.6">checkpoint</em>
+    </div>
+    <div style="margin-top:6px;">
+      <button class="clear-btn" onclick="toggleAllDebug()" id="toggleAllDebugBtn" style="width:100%; font-size:11px; padding:6px 10px;">⏸ Wyłącz wszystkie pauzy</button>
     </div>
     <div style="margin-top:auto; padding:10px 4px 4px; border-top:1px solid var(--border); text-align:center;">
       <div style="font-size:11px; color:var(--muted); line-height:1.6;">made with love by<br><strong style="color:var(--text);">Coding Tree</strong></div>
@@ -761,7 +764,7 @@ const BLOCK_DEFS = {
   'set-var':    { label: '📦 Ustaw zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }, { key: 'value', placeholder: 'Zosia' }] },
   'show-var':   { label: '👁 Pokaż zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }] },
   'group':      { label: '📎 Grupa', cls: 'b-group', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
-  'debug-stop': { label: '🛑 Zatrzymaj (debug)', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
+  'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
 };
 
 // ── API KEY ──
@@ -904,6 +907,15 @@ function renderBlocks() {
 
   stack.innerHTML = '';
   renderBlockList(blocks, stack, null);
+
+  // update global toggle button label
+  const btn = document.getElementById('toggleAllDebugBtn');
+  if (btn) {
+    const debugBlocks = [];
+    (function collect(arr) { arr.forEach(b => { if (b.type === 'debug-stop') debugBlocks.push(b); if (b.children) collect(b.children); }); })(blocks);
+    const anyEnabled = debugBlocks.some(b => !b.disabled);
+    btn.textContent = anyEnabled ? '⏸ Wyłącz wszystkie pauzy' : '▶ Włącz wszystkie pauzy';
+  }
 }
 
 function renderBlockList(blkArray, container, parentPath) {
@@ -1075,6 +1087,21 @@ function toggleBlockByPath(path) {
   renderBlocks();
 }
 
+function toggleAllDebug() {
+  const debugBlocks = [];
+  function collect(arr) {
+    arr.forEach(b => {
+      if (b.type === 'debug-stop') debugBlocks.push(b);
+      if (b.children) collect(b.children);
+    });
+  }
+  collect(blocks);
+  if (debugBlocks.length === 0) return;
+  const anyEnabled = debugBlocks.some(b => !b.disabled);
+  debugBlocks.forEach(b => b.disabled = anyEnabled);
+  renderBlocks();
+}
+
 function openTextPopupByPath(path, key, label) {
   const b = getBlockByPath(path);
   if (!b) return;
@@ -1122,7 +1149,7 @@ function log(text, type = '') {
   const body = document.getElementById('outputBody');
   const el = document.createElement('div');
   el.className = `output-line ${type}`;
-  const labels = { ai: '🤖 AI', say: '💬 Skrypt', error: '❌ Błąd', info: 'ℹ️ Info' };
+  const labels = { ai: '🤖 AI', say: '💬 Skrypt', error: '❌ Błąd', info: 'ℹ️ Info', debug: '⏸ Pauza' };
   if (labels[type]) {
     el.innerHTML = `<div class="output-label">${labels[type]}</div>${escHtml(text)}`;
   } else {
@@ -1312,8 +1339,8 @@ async function executeBlocks(blks, startIdx) {
 
       case 'debug-stop': {
         const msg = interpolateVars(vals.msg || 'breakpoint');
-        log(`🛑 STOP: ${msg} — kliknij "Kontynuuj" aby wznowić`, 'error');
-        clog(`🛑 DEBUG STOP: ${msg}`);
+        log(`⏸ PAUZA: ${msg} — kliknij "Kontynuuj" aby wznowić`, 'debug');
+        clog(`⏸ PAUZA: ${msg}`);
         clog('  Zmienne w momencie stopu:');
         Object.entries(variables).forEach(([k, v]) => clog(`    ${k} = "${v}"`));
         updateVarsPanel();
@@ -1325,7 +1352,7 @@ async function executeBlocks(blks, startIdx) {
         document.getElementById('resumeBtn').style.display = 'none';
         document.getElementById('runBtn').style.display = '';
         if (debugStopped) return;
-        clog('▶ Wznowiono po debug stop');
+        clog('▶ Wznowiono po pauzie');
         switchTab('output');
         break;
       }
