@@ -133,7 +133,8 @@
 
   /* ── CANVAS ── */
   .canvas {
-    position: relative;
+    display: flex;
+    flex-direction: column;
     background: var(--bg);
     background-image:
       radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0);
@@ -141,8 +142,9 @@
     overflow: hidden;
   }
   .canvas-inner {
-    position: absolute;
-    inset: 0;
+    position: relative;
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     padding: 20px;
   }
@@ -878,7 +880,7 @@
   <div class="canvas" id="canvas"
        ondragover="onDragOver(event)"
        ondrop="onDrop(event)">
-    <div id="versionBar" style="display:none; padding:6px 14px; background:var(--surface); border-bottom:1px solid var(--border); display:none; align-items:center; gap:8px; font-size:12px; flex-shrink:0; z-index:5;">
+    <div id="versionBar" style="display:none; padding:6px 14px; background:var(--surface); border-bottom:1px solid var(--border); align-items:center; gap:8px; font-size:12px; flex-shrink:0; z-index:5;">
       <span id="versionBarTitle" style="font-weight:800;"></span>
       <span id="versionBarChips" style="display:flex; gap:4px; flex-wrap:wrap;"></span>
     </div>
