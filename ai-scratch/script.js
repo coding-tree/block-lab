@@ -27,6 +27,7 @@ const BLOCK_DEFS = {
   'if-else':    { label: '❓ Jeżeli', cls: 'b-if-else', inputs: [], isIfElse: true },
   'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
   'goto':       { label: '↩ Idź do:', cls: 'b-repeat', inputs: [], isGoto: true },
+  'obj-new':    { label: '🏗 Nowy obiekt:', cls: 'b-obj', inputs: [{ key: 'name', placeholder: 'gracz' }, { key: 'props', placeholder: 'imię=Zosia, hp=100, atak=15' }] },
   'list-new':   { label: '📋 Nowa lista:', cls: 'b-list', inputs: [{ key: 'name', placeholder: 'kolory' }, { key: 'values', placeholder: 'czerwony, niebieski, zielony' }] },
   'list-add':   { label: '➕ Dodaj do:', cls: 'b-list', inputs: [{ key: 'name', placeholder: 'kolory' }, { key: 'value', placeholder: 'czerwony' }] },
 };
@@ -1195,6 +1196,28 @@ async function executeBlocks(blks, startIdx) {
         break;
       }
 
+      case 'obj-new': {
+        const name = interpolateVars(vals.name || 'obiekt');
+        const raw = vals.props || '';
+        const obj = Object.create(null);
+        if (raw) {
+          // split on commas, but respect values that may contain commas inside {}
+          raw.split(/,(?![^{]*})/).forEach(pair => {
+            const eq = pair.indexOf('=');
+            if (eq === -1) return;
+            const key = pair.slice(0, eq).trim();
+            const val = interpolateVars(pair.slice(eq + 1).trim());
+            if (key) obj[key] = val;
+          });
+        }
+        setVar(name, obj);
+        const display = Object.keys(obj).map(k => `${k}=${obj[k]}`).join(', ');
+        log(`🏗 ${name} = {${display}}`, 'info');
+        clog(`  🏗 nowy obiekt: ${name} → {${display}}`);
+        updateVarsPanel();
+        break;
+      }
+
       case 'list-new': {
         const name = interpolateVars(vals.name || 'lista');
         const raw = vals.values || '';
@@ -1221,8 +1244,10 @@ async function executeBlocks(blks, startIdx) {
           const resolved = getVar(refPath);
           if (resolved != null && typeof resolved === 'object') {
             value = JSON.parse(JSON.stringify(resolved));
+          } else if (resolved !== undefined) {
+            value = resolved;
           } else {
-            value = resolved !== undefined ? resolved : interpolateVars(rawValue);
+            throw new Error(`@${refPath} — nie znaleziono obiektu!`);
           }
         } else {
           value = interpolateVars(rawValue);
@@ -1799,9 +1824,7 @@ const EXAMPLES = {
       { label: 'obiekt gracza', blocks: [
         { type: 'start', vals: {} },
         { type: 'say', vals: { text: '🏗 Tworzę obiekt gracza!' } },
-        { type: 'set-var', vals: { name: 'gracz.imię', value: 'Zosia' } },
-        { type: 'set-var', vals: { name: 'gracz.hp', value: '100' } },
-        { type: 'set-var', vals: { name: 'gracz.atak', value: '15' } },
+        { type: 'obj-new', vals: { name: 'gracz', props: 'imię=Zosia, hp=100, atak=15' } },
         { type: 'say', vals: { text: '{gracz.imię}: HP={gracz.hp}, atak={gracz.atak}' } },
         { type: 'change-var', vals: { name: 'gracz.hp', delta: '-20' } },
         { type: 'say', vals: { text: '💥 Trafienie! HP spadło do {gracz.hp}' } },
@@ -1938,9 +1961,7 @@ const EXAMPLES = {
         { type: 'ask', vals: { text: 'Ile postaci stworzyć? (1-6)', name: 'ile' } },
         { type: 'set-var', vals: { name: 'i', value: '0' } },
         { type: 'group', vals: { name: 'twórz' }, children: [
-          { type: 'set-var', vals: { name: 'postać.imię', value: '{losowy(imiona)}' } },
-          { type: 'set-var', vals: { name: 'postać.klasa', value: '{losowy(klasy)}' } },
-          { type: 'set-var', vals: { name: 'postać.broń', value: '{losowy(bronie)}' } },
+          { type: 'obj-new', vals: { name: 'postać', props: 'imię={losowy(imiona)}, klasa={losowy(klasy)}, broń={losowy(bronie)}' } },
           { type: 'random-num', vals: { name: 'postać.hp', min: '50', max: '150' } },
           { type: 'random-num', vals: { name: 'postać.atak', min: '5', max: '25' } },
           { type: 'list-add', vals: { name: 'drużyna', value: '@postać' } },
