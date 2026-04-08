@@ -1130,14 +1130,19 @@ function renderSavedProjectsHint() {
   html += '<div class="examples-grid">';
   names.forEach(name => {
     const p = projects[name];
-    html += `<div class="example-card" style="cursor:default">`;
+    const lastIdx = p.versions.length - 1;
+    html += `<div class="example-card" onclick="loadVersion('${escHtml(name)}',${lastIdx})">`;
     html += `<div class="ex-icon">💾</div>`;
     html += `<div class="ex-title">${escHtml(name)}</div>`;
-    html += `<div class="project-versions" style="margin-top:6px;">`;
-    p.versions.forEach((v, i) => {
-      html += `<span class="version-chip" onclick="event.stopPropagation();loadVersion('${escHtml(name)}',${i})" title="${v.date}">v${v.v}</span>`;
-    });
-    html += `</div>`;
+    if (p.versions.length > 1) {
+      html += `<select onclick="event.stopPropagation()" onchange="event.stopPropagation();loadVersion('${escHtml(name)}',Number(this.value))" style="margin-top:6px;width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'Nunito',sans-serif;font-weight:700;font-size:11px;cursor:pointer;">`;
+      p.versions.forEach((v, i) => {
+        html += `<option value="${i}" ${i === lastIdx ? 'selected' : ''}>v${v.v} · ${v.date}</option>`;
+      });
+      html += `</select>`;
+    } else {
+      html += `<div class="ex-desc">${p.versions[0].date}</div>`;
+    }
     html += `</div>`;
   });
   html += '</div>';
@@ -2210,14 +2215,12 @@ function renderVersionBar() {
   bar.style.display = 'flex';
   document.getElementById('versionBarTitle').textContent = ex.icon + ' ' + ex.title + ':';
   const chips = document.getElementById('versionBarChips');
-  chips.innerHTML = '';
+  let html = `<select onchange="loadExample('${currentExample.name}',Number(this.value))" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;cursor:pointer;">`;
   ex.versions.forEach((v, i) => {
-    const chip = document.createElement('span');
-    chip.className = 'version-chip' + (i === currentExample.vIdx ? ' active' : '');
-    chip.textContent = `v${i + 1} · ${v.label}`;
-    chip.onclick = () => loadExample(currentExample.name, i);
-    chips.appendChild(chip);
+    html += `<option value="${i}" ${i === currentExample.vIdx ? 'selected' : ''}>v${i + 1} · ${v.label}</option>`;
   });
+  html += `</select>`;
+  chips.innerHTML = html;
 }
 
 // ── RENDER EXAMPLES ──
@@ -2226,15 +2229,19 @@ function renderExamplesGrid() {
   if (!grid) return;
   grid.innerHTML = '';
   Object.entries(EXAMPLES).forEach(([key, ex]) => {
-    let html = `<div class="example-card" style="cursor:default">`;
+    const lastIdx = ex.versions.length - 1;
+    let html = `<div class="example-card" onclick="loadExample('${key}')">`;
     html += `<div class="ex-icon">${ex.icon}</div>`;
     html += `<div class="ex-title">${ex.title}</div>`;
     html += `<div class="ex-desc">${ex.desc}</div>`;
-    html += `<div class="project-versions" style="margin-top:6px;">`;
-    ex.versions.forEach((v, i) => {
-      html += `<span class="version-chip" onclick="event.stopPropagation();loadExample('${key}',${i})" title="${v.label}">v${i + 1} · ${v.label}</span>`;
-    });
-    html += `</div></div>`;
+    if (ex.versions.length > 1) {
+      html += `<select onclick="event.stopPropagation()" onchange="event.stopPropagation();loadExample('${key}',Number(this.value))" style="margin-top:6px;width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'Nunito',sans-serif;font-weight:700;font-size:11px;cursor:pointer;">`;
+      ex.versions.forEach((v, i) => {
+        html += `<option value="${i}" ${i === lastIdx ? 'selected' : ''}>v${i + 1} · ${v.label}</option>`;
+      });
+      html += `</select>`;
+    }
+    html += `</div>`;
     grid.insertAdjacentHTML('beforeend', html);
   });
 }
