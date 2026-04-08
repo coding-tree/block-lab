@@ -279,6 +279,17 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   pointer-events: none; font-size: 13px; line-height: 2;
 }
 
+/* ═══ CENTER: GAME VIEW ═══ */
+#game-area {
+  position: relative; overflow: hidden;
+  background: #1a1a2e;
+  grid-row: 1; grid-column: 2;
+}
+#game-canvas {
+  width: 100%; height: 100%;
+  image-rendering: pixelated;
+}
+
 /* ═══ RIGHT: ACTOR EDITOR ═══ */
 #editor-panel {
   background: var(--bg2);
@@ -523,6 +534,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   <div class="tb-divider"></div>
   <div class="mode-pills">
     <button class="tb-btn active" id="view-scene-btn" onclick="setView('scene')">🎭 Scena</button>
+    <button class="tb-btn" id="view-game-btn" onclick="setView('game')">🎮 Gra</button>
     <button class="tb-btn" id="view-code-btn" onclick="setView('code')">{ } Kod</button>
   </div>
   <div class="tb-divider"></div>
@@ -556,6 +568,15 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       <div style="font-size:42px;margin-bottom:12px">⬡</div>
       Spawnuj aktorów przyciskami wyżej<br>
       lub kliknij <strong>▶ Uruchom</strong> aby zobaczyć ich w akcji
+    </div>
+  </div>
+
+  <!-- CENTER: GAME VIEW -->
+  <div id="game-area" style="display:none;">
+    <canvas id="game-canvas"></canvas>
+    <div id="game-hint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--border2);pointer-events:none;font-size:13px;line-height:2;">
+      <div style="font-size:42px;margin-bottom:12px">🎮</div>
+      Uruchom grę aby zobaczyć sprite'y w akcji
     </div>
   </div>
 
@@ -1499,6 +1520,7 @@ function startRuntime() {
     });
 
     updateStatus();
+    renderGameView();
   }, tickMs);
 }
 
@@ -1653,20 +1675,110 @@ function animateMsg(fromId, toId, label, color) {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  GAME VIEW RENDERER
+// ═══════════════════════════════════════════════════════════
+function resizeGameCanvas() {
+  const area = document.getElementById('game-area');
+  const canvas = document.getElementById('game-canvas');
+  canvas.width = area.clientWidth;
+  canvas.height = area.clientHeight;
+}
+
+function renderGameView() {
+  if (S.view !== 'game') return;
+  const canvas = document.getElementById('game-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // Clear
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw ground
+  ctx.fillStyle = '#3a2a1a';
+  ctx.fillRect(0, 310, W, H - 310);
+  ctx.fillStyle = '#5a4a2a';
+  ctx.fillRect(0, 310, W, 4);
+
+  // Draw actors that have state.x and state.y as sprites
+  Object.values(S.actors).forEach(a => {
+    if (a.state.x === undefined || a.state.y === undefined) return;
+    if (a.type === 'supervisor' || a.type === 'root') return;
+    const x = Number(a.state.x);
+    const y = Number(a.state.y);
+    if (isNaN(x) || isNaN(y)) return;
+
+    // Draw shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x + 16, 308, 14, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw sprite (emoji)
+    ctx.font = '28px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(a.icon, x + 16, y + 2);
+
+    // Draw name label
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillStyle = a.status === 'dead' ? '#ff3355' : '#ffffff88';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(a.name, x + 16, y + 4);
+
+    // HP bar if actor has hp
+    if (a.state.hp !== undefined) {
+      const hp = Math.max(0, Number(a.state.hp));
+      const maxHp = 3;
+      const barW = 30;
+      const barX = x + 1;
+      const barY = y - 24;
+      ctx.fillStyle = '#333';
+      ctx.fillRect(barX, barY, barW, 4);
+      ctx.fillStyle = hp > 1 ? '#3fb950' : '#ff4444';
+      ctx.fillRect(barX, barY, barW * Math.min(hp / maxHp, 1), 4);
+    }
+  });
+
+  // HUD: Score
+  const scoreActor = Object.values(S.actors).find(a => a.name === 'Score');
+  if (scoreActor) {
+    ctx.font = 'bold 14px monospace';
+    ctx.fillStyle = '#ffdd00';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`⭐ ${scoreActor.state.points || 0}`, 10, 10);
+    ctx.fillText(`🪙 ${scoreActor.state.coins || 0}`, 10, 28);
+  }
+
+  const mario = Object.values(S.actors).find(a => a.name === 'Mario');
+  if (mario) {
+    ctx.fillText(`❤️ ${Math.max(0, Number(mario.state.hp || 0))}`, 10, 46);
+  }
+
+  // Hide hint when running
+  document.getElementById('game-hint').style.display = S.running ? 'none' : '';
+}
+
+// ═══════════════════════════════════════════════════════════
 //  UI HELPERS
 // ═══════════════════════════════════════════════════════════
 function setView(v) {
-  S.view = v;
-  document.getElementById('view-scene-btn').classList.toggle('active', v==='scene');
-  document.getElementById('view-code-btn').classList.toggle('active', v==='code');
-  // For now code view just shows generated pseudocode toast
   if (v === 'code') {
     toast('Widok kodu — wkrótce dostępny');
-    S.view = 'scene';
-    document.getElementById('view-scene-btn').classList.add('active');
-    document.getElementById('view-code-btn').classList.remove('active');
+    return;
   }
-  document.getElementById('sb-mode').textContent = 'Tryb: ' + (v==='scene'?'Scena':'Kod');
+  S.view = v;
+  document.getElementById('view-scene-btn').classList.toggle('active', v==='scene');
+  document.getElementById('view-game-btn').classList.toggle('active', v==='game');
+  document.getElementById('view-code-btn').classList.toggle('active', v==='code');
+  document.getElementById('scene-area').style.display = v === 'scene' ? '' : 'none';
+  document.getElementById('game-area').style.display = v === 'game' ? '' : 'none';
+  if (v === 'game') resizeGameCanvas();
+  const labels = { scene: 'Scena', game: 'Gra', code: 'Kod' };
+  document.getElementById('sb-mode').textContent = 'Tryb: ' + (labels[v] || v);
 }
 
 function setEdTab(tab) {
@@ -1716,6 +1828,7 @@ document.addEventListener('keydown', e => {
 //  BOOT
 // ═══════════════════════════════════════════════════════════
 selectMode('game');
+window.addEventListener('resize', () => { if (S.view === 'game') resizeGameCanvas(); });
 </script>
 </body>
 </html>
