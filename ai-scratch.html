@@ -156,14 +156,14 @@
     color: var(--muted);
     font-size: 13px;
     width: 90%;
-    max-width: 520px;
+    max-width: 620px;
   }
   .drop-hint .emoji { font-size: 42px; display: block; margin-bottom: 8px; }
   .drop-hint .subtitle { color: var(--border); margin-bottom: 20px; }
 
   .examples-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
     gap: 10px;
     margin-top: 16px;
     text-align: left;
@@ -707,6 +707,16 @@
             <div class="ex-icon">📖</div>
             <div class="ex-title">Generator zdań</div>
             <div class="ex-desc">Losuj słowa i buduj śmieszne zdania.</div>
+          </div>
+          <div class="example-card" onclick="loadExample('quiz')">
+            <div class="ex-icon">📎</div>
+            <div class="ex-title">Quiz zwierzęcy</div>
+            <div class="ex-desc">Grupa + Powtórz = 3 rundy quizu!</div>
+          </div>
+          <div class="example-card" onclick="loadExample('debugDemo')">
+            <div class="ex-icon">🛑</div>
+            <div class="ex-title">Debug demo</div>
+            <div class="ex-desc">Zatrzymaj program i sprawdź zmienne.</div>
           </div>
         </div>
       </div>
@@ -1457,6 +1467,29 @@ const EXAMPLES = {
     { type: 'set-var', vals: { name: 'kto', value: '{_random}' } },
     { type: 'if-random', vals: { options: 'poszedł na lody, poleciał na Marsa, znalazł skarb, nauczył się latać' } },
     { type: 'say', vals: { text: '{jaki} {kto} {_random}!' } },
+  ],
+  quiz: [
+    { type: 'start', vals: {} },
+    { type: 'say', vals: { text: 'Quiz zwierzęcy! 3 rundy!' } },
+    { type: 'repeat', vals: { times: '3' } },
+    { type: 'group', vals: { name: 'runda quizu' }, children: [
+      { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, delfin, orzeł' } },
+      { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+      { type: 'if-random', vals: { options: 'lata, pływa, biega, skacze, czołga się' } },
+      { type: 'say', vals: { text: 'Czy {zwierzę} {_random}? 🤔' } },
+      { type: 'wait', vals: { secs: '2' } },
+    ]},
+    { type: 'say', vals: { text: 'Koniec quizu! 🎉' } },
+  ],
+  debugDemo: [
+    { type: 'start', vals: {} },
+    { type: 'set-var', vals: { name: 'licznik', value: '0' } },
+    { type: 'debug-stop', vals: { msg: 'przed losowaniem' } },
+    { type: 'if-random', vals: { options: 'jabłko, banan, winogrono, arbuz' } },
+    { type: 'set-var', vals: { name: 'owoc', value: '{_random}' } },
+    { type: 'debug-stop', vals: { msg: 'po losowaniu — sprawdź zmienne' } },
+    { type: 'say', vals: { text: 'Wylosowany owoc: {owoc}!' } },
+    { type: 'say', vals: { text: 'Sprawdź zakładkę Zmienne i Konsolę!' } },
   ],
 };
 
