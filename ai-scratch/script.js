@@ -1,0 +1,1433 @@
+let apiKey = '';
+let blocks = [];
+let variables = {};
+let dragSrc = null;
+let blockCounter = 0;
+let currentExample = null; // { name, vIdx }
+
+const BLOCK_DEFS = {
+  'start':      { label: '▶ Start programu', cls: 'b-start', inputs: [] },
+  'end':        { label: '🛑 Zakończ program', cls: 'b-end', inputs: [] },
+  'ai-ask':     { label: '🤖 Zapytaj AI:', cls: 'b-ai', inputs: [{ key: 'text', placeholder: 'Skąd bierze się tęcza?' }] },
+  'ai-story':   { label: '📖 Napisz historię o:', cls: 'b-ai', inputs: [{ key: 'topic', placeholder: 'dinozaurach' }] },
+  'ai-explain': { label: '💡 Wyjaśnij:', cls: 'b-ai', inputs: [{ key: 'concept', placeholder: 'grawitację' }] },
+  'ai-translate':{ label: '🌍 Przetłumacz na angielski:', cls: 'b-ai', inputs: [{ key: 'text', placeholder: 'Cześć świecie' }] },
+  'ai-poem':    { label: '🎵 Ułóż wiersz o:', cls: 'b-ai', inputs: [{ key: 'topic', placeholder: 'kosmosie' }] },
+  'say':        { label: '💬 Powiedz:', cls: 'b-say', inputs: [{ key: 'text', placeholder: 'Witaj!' }] },
+  'wait':       { label: '⏱ Czekaj:', cls: 'b-wait', inputs: [{ key: 'secs', placeholder: '1' }], suffix: 'sek' },
+  'repeat':     { label: '🔁 Powtórz:', cls: 'b-repeat', inputs: [{ key: 'times', placeholder: '3' }], suffix: 'razy' },
+  'if-random':  { label: '🎲 Losowo jeden z:', cls: 'b-if', inputs: [{ key: 'options', placeholder: 'pies, kot, ryba' }] },
+  'set-var':    { label: '📦 Ustaw zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }, { key: 'value', placeholder: 'Zosia' }] },
+  'show-var':   { label: '👁 Pokaż zmienną:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'imię' }] },
+  'change-var': { label: '➕ Zmień zmienną o:', cls: 'b-math', inputs: [{ key: 'name', placeholder: 'punkty' }, { key: 'delta', placeholder: '1' }] },
+  'math-set':   { label: '📐 Oblicz:', cls: 'b-math', inputs: [{ key: 'name', placeholder: 'wynik' }, { key: 'expr', placeholder: '{x} + {y} * 2' }] },
+  'random-num': { label: '🎯 Losowa liczba:', cls: 'b-math', inputs: [{ key: 'name', placeholder: 'kostka' }, { key: 'min', placeholder: '1' }, { key: 'max', placeholder: '6' }] },
+  'group':      { label: '📎 Grupa', cls: 'b-group', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
+  'if-else':    { label: '❓ Jeżeli', cls: 'b-if-else', inputs: [], isIfElse: true },
+  'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
+};
+
+// ── API KEY ──
+function showModal() {
+  document.getElementById('apiModal').style.display = '';
+  document.getElementById('apiKeyInput').focus();
+}
+function closeModal() {
+  document.getElementById('apiModal').style.display = 'none';
+}
+function saveKey() {
+  const val = document.getElementById('apiKeyInput').value.trim();
+  if (val) {
+    apiKey = val;
+    document.getElementById('keyDot').classList.remove('no-key');
+    document.getElementById('keyStatus').textContent = 'klucz aktywny';
+    toggleAiBlocks(true);
+  }
+  document.getElementById('apiModal').style.display = 'none';
+}
+function toggleAiBlocks(show) {
+  document.querySelectorAll('.palette .block-template.b-ai').forEach(el => {
+    el.style.display = show ? '' : 'none';
+  });
+  document.querySelectorAll('.palette h3').forEach(h => {
+    if (h.textContent.includes('AI')) h.style.display = show ? '' : 'none';
+  });
+}
+
+// ── TABS ──
+function switchTab(tab) {
+  document.querySelectorAll('.output-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.output-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.output-pane[data-tab="${tab}"]`).classList.add('active');
+  document.querySelector(`.output-tab[onclick*="${tab}"]`).classList.add('active');
+}
+
+// ── CONSOLE LOG ──
+function clog(text) {
+  const body = document.getElementById('consoleBody');
+  const el = document.createElement('div');
+  el.className = 'output-line console';
+  const time = new Date().toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  el.innerHTML = `<span style="color:var(--muted);margin-right:8px;">${time}</span>${escHtml(text)}`;
+  body.appendChild(el);
+  body.scrollTop = body.scrollHeight;
+}
+
+// ── VARIABLES PANEL ──
+function updateVarsPanel() {
+  const body = document.getElementById('varsBody');
+  const keys = Object.keys(variables);
+  if (keys.length === 0) {
+    body.innerHTML = '<div class="var-empty">Brak zmiennych — uruchom program.</div>';
+    return;
+  }
+  let html = '<table class="var-table"><tr><th>Nazwa</th><th>Wartość</th></tr>';
+  keys.forEach(k => {
+    const val = String(variables[k]);
+    const display = val.length > 60 ? val.slice(0, 60) + '...' : val;
+    html += `<tr><td>${escHtml(k)}</td><td>${escHtml(display)}</td></tr>`;
+  });
+  html += '</table>';
+  body.innerHTML = html;
+}
+
+// ── DEBUG STOP ──
+let debugResolve = null;
+let debugStopped = false;
+
+function resumeDebug() {
+  if (debugResolve) {
+    debugResolve();
+    debugResolve = null;
+  }
+}
+
+// ── SAVE/LOAD ──
+const STORAGE_KEY = 'blocklab-projects';
+
+function getProjects() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+}
+
+function setProjects(p) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+}
+
+function openSaveModal() {
+  document.getElementById('saveModal').style.display = '';
+  document.getElementById('projectNameInput').value = '';
+  renderProjectList();
+  document.getElementById('projectNameInput').focus();
+}
+
+function closeSaveModal() {
+  document.getElementById('saveModal').style.display = 'none';
+}
+
+function saveProject() {
+  const name = document.getElementById('projectNameInput').value.trim();
+  if (!name) return;
+  const projects = getProjects();
+  if (!projects[name]) projects[name] = { versions: [] };
+  const vNum = projects[name].versions.length + 1;
+  projects[name].versions.push({
+    v: vNum,
+    date: new Date().toLocaleString('pl-PL'),
+    blocks: JSON.parse(JSON.stringify(blocks)),
+  });
+  setProjects(projects);
+  renderProjectList();
+  document.getElementById('projectNameInput').value = '';
+}
+
+function saveToProject(name) {
+  if (blocks.length === 0) return;
+  const projects = getProjects();
+  if (!projects[name]) projects[name] = { versions: [] };
+  const vNum = projects[name].versions.length + 1;
+  projects[name].versions.push({
+    v: vNum,
+    date: new Date().toLocaleString('pl-PL'),
+    blocks: JSON.parse(JSON.stringify(blocks)),
+  });
+  setProjects(projects);
+  renderProjectList();
+}
+
+function overwriteVersion(name, vIdx) {
+  if (blocks.length === 0) return;
+  const projects = getProjects();
+  if (!projects[name]?.versions[vIdx]) return;
+  projects[name].versions[vIdx].date = new Date().toLocaleString('pl-PL');
+  projects[name].versions[vIdx].blocks = JSON.parse(JSON.stringify(blocks));
+  setProjects(projects);
+  renderProjectList();
+}
+
+function loadVersion(name, vIdx) {
+  const projects = getProjects();
+  const ver = projects[name]?.versions[vIdx];
+  if (!ver) return;
+  blocks = cloneBlocks(ver.blocks);
+  blockCounter = countBlocks(blocks);
+  renderBlocks();
+  closeSaveModal();
+}
+
+function countBlocks(arr) {
+  let c = 0;
+  arr.forEach(b => {
+    c++;
+    if (b.children) c += countBlocks(b.children);
+    if (b.elseChildren) c += countBlocks(b.elseChildren);
+  });
+  return c;
+}
+
+function deleteProject(name) {
+  const projects = getProjects();
+  delete projects[name];
+  setProjects(projects);
+  renderProjectList();
+}
+
+function deleteVersion(name, vIdx) {
+  const projects = getProjects();
+  if (!projects[name]) return;
+  projects[name].versions.splice(vIdx, 1);
+  // renumber
+  projects[name].versions.forEach((v, i) => v.v = i + 1);
+  if (projects[name].versions.length === 0) delete projects[name];
+  setProjects(projects);
+  renderProjectList();
+}
+
+function renderProjectList() {
+  const list = document.getElementById('projectList');
+  const projects = getProjects();
+  const names = Object.keys(projects);
+  if (names.length === 0) {
+    list.innerHTML = '<div class="no-projects">Brak zapisanych projektów</div>';
+    return;
+  }
+  list.innerHTML = '';
+  names.forEach(name => {
+    const p = projects[name];
+    const eName = escHtml(name);
+    const div = document.createElement('div');
+    div.className = 'project-item';
+
+    let html = `<div style="display:flex;align-items:center;">`;
+    html += `<div class="project-item-name">${eName}</div>`;
+    html += `<div class="project-actions">`;
+    html += `<button onclick="event.stopPropagation();saveToProject('${eName}')" title="Dodaj nową wersję" style="color:var(--accent3);font-size:12px;">+ nowa</button>`;
+    html += `<button onclick="event.stopPropagation();deleteProject('${eName}')" title="Usuń projekt">🗑</button>`;
+    html += `</div></div>`;
+    html += `<div class="project-versions" style="margin-top:6px;">`;
+    p.versions.forEach((v, i) => {
+      html += `<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">`;
+      html += `<span class="version-chip" onclick="event.stopPropagation();loadVersion('${eName}',${i})" style="flex:1;">v${v.v} · ${v.date}</span>`;
+      html += `<button style="background:none;border:none;color:var(--accent6);cursor:pointer;font-size:10px;padding:2px 4px;" onclick="event.stopPropagation();overwriteVersion('${eName}',${i})" title="Nadpisz tę wersję">💾</button>`;
+      html += `<button style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;padding:2px 4px;" onclick="event.stopPropagation();deleteVersion('${eName}',${i})" title="Usuń wersję">✕</button>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
+    div.innerHTML = html;
+    list.appendChild(div);
+  });
+}
+
+function renderSavedProjectsHint() {
+  const el = document.getElementById('savedProjectsHint');
+  if (!el) return;
+  const projects = getProjects();
+  const names = Object.keys(projects);
+  if (names.length === 0) { el.innerHTML = ''; return; }
+  let html = '<div class="subtitle" style="margin-top:20px;">...lub otwórz zapisany projekt:</div>';
+  html += '<div class="examples-grid">';
+  names.forEach(name => {
+    const p = projects[name];
+    const lastIdx = p.versions.length - 1;
+    html += `<div class="example-card" onclick="loadVersion('${escHtml(name)}',${lastIdx})">`;
+    html += `<div class="ex-icon">💾</div>`;
+    html += `<div class="ex-title">${escHtml(name)}</div>`;
+    if (p.versions.length > 1) {
+      html += `<select onclick="event.stopPropagation()" onchange="event.stopPropagation();loadVersion('${escHtml(name)}',Number(this.value))" style="margin-top:6px;width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'Nunito',sans-serif;font-weight:700;font-size:11px;cursor:pointer;">`;
+      p.versions.forEach((v, i) => {
+        html += `<option value="${i}" ${i === lastIdx ? 'selected' : ''}>v${v.v} · ${v.date}</option>`;
+      });
+      html += `</select>`;
+    } else {
+      html += `<div class="ex-desc">${p.versions[0].date}</div>`;
+    }
+    html += `</div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function onResume() {
+  debugStopped = false;
+  resumeDebug();
+}
+
+// ── TEXT POPUP ──
+let textPopupTarget = null;
+function openTextPopup(idx, key, label) {
+  textPopupTarget = { idx, key };
+  document.getElementById('textPopupTitle').textContent = label;
+  document.getElementById('textPopupArea').value = blocks[idx].vals[key] || '';
+  document.getElementById('textPopup').style.display = '';
+  document.getElementById('textPopupArea').focus();
+}
+function closeTextPopup() {
+  document.getElementById('textPopup').style.display = 'none';
+  textPopupTarget = null;
+}
+function saveTextPopup() {
+  if (textPopupTarget) {
+    const b = textPopupTarget.path ? getBlockByPath(textPopupTarget.path) : blocks[textPopupTarget.idx];
+    if (b) b.vals[textPopupTarget.key] = document.getElementById('textPopupArea').value;
+    renderBlocks();
+  }
+  closeTextPopup();
+}
+
+// ── DRAG FROM PALETTE ──
+document.querySelectorAll('.block-template').forEach(el => {
+  el.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('block-type', el.dataset.type);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+});
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  const type = e.dataTransfer.getData('block-type');
+  if (!type) return;
+  addBlock(type);
+}
+
+// ── BUILD BLOCK ──
+function addBlock(type, vals = {}, targetArray = null) {
+  const def = BLOCK_DEFS[type];
+  if (!def) return;
+  const id = ++blockCounter;
+  const block = { id, type, vals: { ...vals } };
+  if (def.isGroup) block.children = [];
+  if (def.isIfElse) { block.children = []; block.elseChildren = []; block.vals = { left: vals.left || '', op: vals.op || '=', right: vals.right || '', ...vals }; }
+  (targetArray || blocks).push(block);
+  renderBlocks();
+}
+
+function renderBlocks() {
+  const stack = document.getElementById('scriptStack');
+  const hint = document.getElementById('dropHint');
+  hint.style.display = blocks.length ? 'none' : '';
+  if (!blocks.length) renderSavedProjectsHint();
+
+  stack.innerHTML = '';
+  renderBlockList(blocks, stack, null);
+
+  // update global toggle button label
+  const btn = document.getElementById('toggleAllDebugBtn');
+  if (btn) {
+    const debugBlocks = [];
+    (function collect(arr) { arr.forEach(b => { if (b.type === 'debug-stop') debugBlocks.push(b); if (b.children) collect(b.children); }); })(blocks);
+    const anyEnabled = debugBlocks.some(b => !b.disabled);
+    btn.textContent = anyEnabled ? '⏸ Wyłącz wszystkie pauzy' : '▶ Włącz wszystkie pauzy';
+  }
+}
+
+function initNewBlock(type) {
+  const def = BLOCK_DEFS[type];
+  if (!def) return null;
+  const block = { id: ++blockCounter, type, vals: {} };
+  if (def.isGroup) block.children = [];
+  if (def.isIfElse) { block.children = []; block.elseChildren = []; block.vals = { left: '', op: '=', right: '' }; }
+  return block;
+}
+
+function setupDropZone(el, targetArr, path, singleSlot) {
+  el.addEventListener('dragover', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.dataTransfer.dropEffect = 'copy';
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('drop', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    el.classList.remove('drag-over');
+    const type = ev.dataTransfer.getData('block-type');
+    if (type) {
+      const newBlock = initNewBlock(type);
+      if (newBlock) {
+        if (singleSlot) { targetArr.length = 0; }
+        targetArr.push(newBlock);
+      }
+      renderBlocks();
+      return;
+    }
+    if (dragSrc !== null) {
+      const moved = removeByPath(String(dragSrc));
+      if (moved) {
+        if (singleSlot) { targetArr.length = 0; }
+        targetArr.push(moved);
+      }
+      renderBlocks();
+      dragSrc = null;
+    }
+  });
+}
+
+function createDropGap(blkArray, insertIdx) {
+  const gap = document.createElement('div');
+  gap.className = 'drop-gap';
+  gap.addEventListener('dragover', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.dataTransfer.dropEffect = 'copy';
+    gap.classList.add('drag-over');
+  });
+  gap.addEventListener('dragleave', () => gap.classList.remove('drag-over'));
+  gap.addEventListener('drop', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    gap.classList.remove('drag-over');
+    const type = ev.dataTransfer.getData('block-type');
+    if (type) {
+      const newBlock = initNewBlock(type);
+      if (newBlock) blkArray.splice(insertIdx, 0, newBlock);
+      renderBlocks();
+      return;
+    }
+    if (dragSrc !== null) {
+      const moved = removeByPath(String(dragSrc));
+      if (moved) {
+        // re-resolve insert index after removal
+        blkArray.splice(Math.min(insertIdx, blkArray.length), 0, moved);
+      }
+      renderBlocks();
+      dragSrc = null;
+    }
+  });
+  return gap;
+}
+
+function renderBlockList(blkArray, container, parentPath) {
+  blkArray.forEach((b, idx) => {
+    const def = BLOCK_DEFS[b.type];
+    const path = parentPath ? `${parentPath}.${idx}` : `${idx}`;
+
+    // drop gap before each block
+    container.appendChild(createDropGap(blkArray, idx));
+
+    if (def.isGroup) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'block-group';
+
+      // header
+      const header = document.createElement('div');
+      header.className = 'block-group-header';
+      let hhtml = `<span>📎 Grupa:</span>`;
+      hhtml += ` <input class="block-input" value="${escHtml(b.vals.name || '')}" placeholder="moja grupa"
+                   onclick="event.stopPropagation()"
+                   oninput="updateValByPath('${path}','name',this.value)">`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń grupę" style="margin-left:auto">✕</button>`;
+      header.innerHTML = hhtml;
+      header.draggable = true;
+      header.addEventListener('dragstart', ev => {
+        dragSrc = path;
+        ev.dataTransfer.setData('block-path', path);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+      wrapper.appendChild(header);
+
+      // body
+      const body = document.createElement('div');
+      body.className = 'block-group-body';
+      body.dataset.path = path;
+
+      if (b.children.length === 0) {
+        body.innerHTML = '<div class="block-group-hint">Przeciągnij bloki tutaj</div>';
+      } else {
+        renderBlockList(b.children, body, path);
+      }
+
+      // drop into group
+      setupDropZone(body, b.children, path);
+
+      wrapper.appendChild(body);
+      container.appendChild(wrapWithMoveCol(wrapper, path, idx, blkArray.length));
+    } else if (def.isIfElse) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'block-if-else';
+
+      // header with condition inputs
+      const header = document.createElement('div');
+      header.className = 'block-if-else-header';
+      let hhtml = `<span>❓ Jeżeli</span>`;
+      hhtml += ` <input class="block-input" value="${escHtml(b.vals.left || '')}" placeholder="zmienna"
+                   style="min-width:60px;max-width:120px"
+                   onclick="event.stopPropagation()"
+                   oninput="updateValByPath('${path}','left',this.value)">`;
+      hhtml += ` <select onchange="updateValByPath('${path}','op',this.value)">
+                   <option value="=" ${b.vals.op === '=' ? 'selected' : ''}>=</option>
+                   <option value="!=" ${b.vals.op === '!=' ? 'selected' : ''}>≠</option>
+                   <option value="zawiera" ${b.vals.op === 'zawiera' ? 'selected' : ''}>zawiera</option>
+                   <option value=">" ${b.vals.op === '>' ? 'selected' : ''}>></option>
+                   <option value="<" ${b.vals.op === '<' ? 'selected' : ''}><</option>
+                 </select>`;
+      hhtml += ` <input class="block-input" value="${escHtml(b.vals.right || '')}" placeholder="wartość"
+                   style="min-width:60px;max-width:120px"
+                   onclick="event.stopPropagation()"
+                   oninput="updateValByPath('${path}','right',this.value)">`;
+      hhtml += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok" style="margin-left:auto">✕</button>`;
+      header.innerHTML = hhtml;
+      header.draggable = true;
+      header.addEventListener('dragstart', ev => {
+        dragSrc = path;
+        ev.dataTransfer.setData('block-path', path);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+      wrapper.appendChild(header);
+
+      // THEN body
+      const thenLabel = document.createElement('div');
+      thenLabel.className = 'block-if-label';
+      thenLabel.textContent = '✓ to:';
+      wrapper.appendChild(thenLabel);
+
+      const thenBody = document.createElement('div');
+      thenBody.className = 'block-if-body';
+      thenBody.dataset.path = path;
+      thenBody.dataset.branch = 'then';
+      if (b.children.length === 0) {
+        thenBody.innerHTML = '<div class="block-group-hint">Upuść blok lub grupę</div>';
+      } else {
+        renderBlockList(b.children, thenBody, path + '.then');
+      }
+      setupDropZone(thenBody, b.children, path, true);
+      wrapper.appendChild(thenBody);
+
+      // ELSE body
+      const elseLabel = document.createElement('div');
+      elseLabel.className = 'block-if-label';
+      elseLabel.textContent = '✗ inaczej:';
+      wrapper.appendChild(elseLabel);
+
+      const elseBody = document.createElement('div');
+      elseBody.className = 'block-if-body block-if-body-else';
+      elseBody.dataset.path = path;
+      elseBody.dataset.branch = 'else';
+      if (b.elseChildren.length === 0) {
+        elseBody.innerHTML = '<div class="block-group-hint">Upuść blok lub grupę (opcjonalne)</div>';
+      } else {
+        renderBlockList(b.elseChildren, elseBody, path + '.else');
+      }
+      setupDropZone(elseBody, b.elseChildren, path, true);
+      wrapper.appendChild(elseBody);
+
+      container.appendChild(wrapWithMoveCol(wrapper, path, idx, blkArray.length));
+    } else {
+      const el = document.createElement('div');
+      el.className = `block ${def.cls}${b.disabled ? ' disabled' : ''}`;
+      el.dataset.path = path;
+
+      let html = `<span style="pointer-events:none">${def.label}</span>`;
+      def.inputs.forEach(inp => {
+        const val = b.vals[inp.key] || '';
+        html += ` <input class="block-input"
+                    value="${escHtml(val)}" placeholder="${inp.placeholder}"
+                    onclick="event.stopPropagation()"
+                    oninput="updateValByPath('${path}','${inp.key}',this.value)">`;
+        html += `<button class="block-expand" onclick="event.stopPropagation();openTextPopupByPath('${path}','${inp.key}','${escHtml(def.label)} ${escHtml(inp.placeholder)}')" title="Rozwiń">⤢</button>`;
+      });
+      if (def.suffix) html += ` <span style="pointer-events:none">${def.suffix}</span>`;
+      if (b.type === 'debug-stop') {
+        html += `<button class="block-expand" onclick="event.stopPropagation();toggleBlockByPath('${path}')" title="${b.disabled ? 'Włącz' : 'Wyłącz'}">${b.disabled ? '○' : '●'}</button>`;
+      }
+      html += `<button class="block-delete" onclick="deleteByPath('${path}')" title="Usuń blok">✕</button>`;
+      el.innerHTML = html;
+
+      el.draggable = true;
+      el.addEventListener('dragstart', ev => {
+        dragSrc = path;
+        ev.dataTransfer.setData('block-path', path);
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+
+      const row = wrapWithMoveCol(el, path, idx, blkArray.length);
+      container.appendChild(row);
+    }
+  });
+  // trailing drop gap after last block
+  if (blkArray.length > 0) {
+    container.appendChild(createDropGap(blkArray, blkArray.length));
+  }
+}
+
+function wrapWithMoveCol(el, path, idx, len) {
+  const row = document.createElement('div');
+  row.className = 'block-row';
+  const col = document.createElement('div');
+  col.className = 'block-move-col';
+  col.innerHTML = `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',-1)" title="W górę" ${idx === 0 ? 'disabled' : ''}>▲</button>`
+    + `<button class="block-move" onclick="event.stopPropagation();moveBlockByPath('${path}',1)" title="W dół" ${idx === len - 1 ? 'disabled' : ''}>▼</button>`;
+  row.appendChild(col);
+  row.appendChild(el);
+  return row;
+}
+
+// ── PATH HELPERS ──
+function getArrayAndIndex(path) {
+  const parts = path.split('.');
+  let arr = blocks;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (part === 'then') { /* already navigated via parent */ continue; }
+    if (part === 'else') { /* already navigated via parent */ continue; }
+    const idx = Number(part);
+    const b = arr[idx];
+    if (!b) return null;
+    const next = parts[i + 1];
+    if (next === 'then') { arr = b.children; i++; }
+    else if (next === 'else') { arr = b.elseChildren; i++; }
+    else if (b.children) { arr = b.children; }
+    else return null;
+  }
+  const last = parts[parts.length - 1];
+  return { arr, idx: Number(last) };
+}
+
+function getBlockByPath(path) {
+  const r = getArrayAndIndex(path);
+  return r ? r.arr[r.idx] : null;
+}
+
+function removeByPath(path) {
+  const r = getArrayAndIndex(path);
+  if (!r) return null;
+  return r.arr.splice(r.idx, 1)[0];
+}
+
+function deleteByPath(path) {
+  removeByPath(path);
+  renderBlocks();
+}
+
+function updateValByPath(path, key, val) {
+  const b = getBlockByPath(path);
+  if (b) b.vals[key] = val;
+}
+
+function toggleBlockByPath(path) {
+  const b = getBlockByPath(path);
+  if (b) b.disabled = !b.disabled;
+  renderBlocks();
+}
+
+function moveBlockByPath(path, dir) {
+  const r = getArrayAndIndex(path);
+  if (!r) return;
+  const newIdx = r.idx + dir;
+  if (newIdx < 0 || newIdx >= r.arr.length) return;
+  const tmp = r.arr[r.idx];
+  r.arr[r.idx] = r.arr[newIdx];
+  r.arr[newIdx] = tmp;
+  renderBlocks();
+}
+
+function toggleAllDebug() {
+  const debugBlocks = [];
+  function collect(arr) {
+    arr.forEach(b => {
+      if (b.type === 'debug-stop') debugBlocks.push(b);
+      if (b.children) collect(b.children);
+    });
+  }
+  collect(blocks);
+  if (debugBlocks.length === 0) return;
+  const anyEnabled = debugBlocks.some(b => !b.disabled);
+  debugBlocks.forEach(b => b.disabled = anyEnabled);
+  renderBlocks();
+}
+
+function openTextPopupByPath(path, key, label) {
+  const b = getBlockByPath(path);
+  if (!b) return;
+  textPopupTarget = { path, key };
+  document.getElementById('textPopupTitle').textContent = label;
+  document.getElementById('textPopupArea').value = b.vals[key] || '';
+  document.getElementById('textPopup').style.display = '';
+  document.getElementById('textPopupArea').focus();
+}
+
+function updateVal(idx, key, val) {
+  blocks[idx].vals[key] = val;
+}
+
+function deleteBlock(idx) {
+  blocks.splice(idx, 1);
+  renderBlocks();
+}
+
+function toggleBlock(idx) {
+  blocks[idx].disabled = !blocks[idx].disabled;
+  renderBlocks();
+}
+
+function clearCanvas() {
+  blocks = [];
+  variables = {};
+  debugStopped = false;
+  currentExample = null;
+  resumeDebug();
+  renderBlocks();
+  renderVersionBar();
+  document.getElementById('outputBody').innerHTML = '';
+  document.getElementById('consoleBody').innerHTML = '';
+  document.getElementById('resumeBtn').style.display = 'none';
+  document.getElementById('runBtn').style.display = '';
+  updateVarsPanel();
+  switchTab('output');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+}
+
+// ── OUTPUT ──
+function log(text, type = '') {
+  const body = document.getElementById('outputBody');
+  const el = document.createElement('div');
+  el.className = `output-line ${type}`;
+  const labels = { ai: '🤖 AI', say: '💬 Skrypt', error: '❌ Błąd', info: 'ℹ️ Info', debug: '⏸ Pauza' };
+  if (labels[type]) {
+    el.innerHTML = `<div class="output-label">${labels[type]}</div>${escHtml(text)}`;
+  } else {
+    el.textContent = text;
+  }
+  body.prepend(el);
+  return el;
+}
+
+function logAI(text) {
+  const body = document.getElementById('outputBody');
+  const el = document.createElement('div');
+  el.className = 'output-line ai';
+  el.innerHTML = `<div class="output-label">🤖 AI odpowiada</div><span id="ai-typing"></span>`;
+  body.prepend(el);
+  const span = el.querySelector('#ai-typing');
+  span.id = '';
+  let i = 0;
+  const interval = setInterval(() => {
+    span.textContent += text[i++] || '';
+    if (i >= text.length) clearInterval(interval);
+  }, 12);
+}
+
+function logLoading() {
+  const body = document.getElementById('outputBody');
+  const el = document.createElement('div');
+  el.className = 'output-line ai';
+  el.innerHTML = `<span class="spinner"></span> AI myśli...`;
+  body.prepend(el);
+  return el;
+}
+
+// ── AI CALL ──
+async function callAI(prompt) {
+  if (!apiKey) {
+    throw new Error('Brak klucza API! Kliknij "brak klucza" przy logo, aby dodać.');
+  }
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 400,
+      system: 'Jesteś pomocnym asystentem dla dzieci w wieku 7-12 lat. Odpowiadaj po polsku, krótko (max 3-4 zdania), prostym językiem, z entuzjazmem! Używaj emoji na końcu.',
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${resp.status}`);
+  }
+  const data = await resp.json();
+  return data.content[0]?.text || '(brak odpowiedzi)';
+}
+
+// ── RUNNER ──
+class EndProgram {}
+
+async function runScript() {
+  document.getElementById('outputBody').innerHTML = '';
+  document.getElementById('consoleBody').innerHTML = '';
+  variables = {};
+  debugStopped = false;
+  updateVarsPanel();
+  switchTab('output');
+
+  if (blocks.length === 0) {
+    log('Brak bloków! Przeciągnij bloki na płótno.', 'error');
+    return;
+  }
+  if (blocks[0]?.type !== 'start') {
+    log('Zacznij od bloku "▶ Start programu"!', 'error');
+    return;
+  }
+  if (blocks[blocks.length - 1]?.type !== 'end') {
+    log('Dodaj blok "🛑 Zakończ program" na końcu programu!', 'error');
+    return;
+  }
+
+  log('Uruchamiam program...', 'info');
+  clog('▶ Program uruchomiony');
+  clog(`Liczba bloków: ${blocks.length}`);
+
+  try {
+    await executeBlocks(blocks, 1);
+    if (!debugStopped) {
+      log('✅ Program zakończony!', 'info');
+      clog('✅ Program zakończony');
+    }
+  } catch (e) {
+    if (e instanceof EndProgram) {
+      clog('✅ Program zakończony (blok Zakończ)');
+    } else {
+      log(e.message, 'error');
+      clog(`❌ Błąd: ${e.message}`);
+    }
+  }
+}
+
+async function executeBlocks(blks, startIdx) {
+  for (let i = startIdx; i < blks.length; i++) {
+    if (debugStopped) return;
+    const b = blks[i];
+    if (b.disabled) { clog(`Blok ${i + 1}: ${BLOCK_DEFS[b.type]?.label || b.type} [wyłączony]`); continue; }
+    const vals = b.vals;
+    clog(`Blok ${i + 1}: ${BLOCK_DEFS[b.type]?.label || b.type}`);
+
+    switch (b.type) {
+      case 'end': {
+        log('🛑 Program zakończony przez blok "Zakończ"', 'info');
+        clog('  🛑 Zakończ program');
+        throw new EndProgram();
+      }
+
+      case 'say': {
+        let text = vals.text || '(puste)';
+        text = interpolateVars(text);
+        log(text, 'say');
+        clog(`  → "${text}"`);
+        break;
+      }
+
+      case 'wait': {
+        const secs = parseFloat(vals.secs) || 1;
+        clog(`  ⏱ czekam ${secs}s...`);
+        await sleep(secs * 1000);
+        break;
+      }
+
+      case 'repeat': {
+        const times = parseInt(vals.times) || 3;
+        const nextIdx = i + 1;
+        if (nextIdx < blks.length) {
+          const nextBlock = blks[nextIdx];
+          const nextLabel = nextBlock.type === 'group' ? `grupa "${nextBlock.vals.name || ''}"` : (BLOCK_DEFS[nextBlock.type]?.label || '');
+          clog(`  🔁 powtarzam ${times}x: ${nextLabel}`);
+          for (let r = 0; r < times; r++) {
+            if (debugStopped) return;
+            clog(`  iteracja ${r + 1}/${times}`);
+            if (nextBlock.type === 'group' && nextBlock.children) {
+              await executeBlocks(nextBlock.children, 0);
+            } else {
+              await executeBlocks([nextBlock], 0);
+            }
+          }
+          i++;
+        }
+        break;
+      }
+
+      case 'group': {
+        const name = vals.name || 'grupa';
+        clog(`  📎 wchodzę do grupy: "${name}" (${b.children?.length || 0} bloków)`);
+        if (b.children && b.children.length > 0) {
+          await executeBlocks(b.children, 0);
+        }
+        break;
+      }
+
+      case 'if-else': {
+        const left = interpolateVars(vals.left || '');
+        const right = interpolateVars(vals.right || '');
+        const op = vals.op || '=';
+        let result = false;
+        switch (op) {
+          case '=':  result = left === right; break;
+          case '!=': result = left !== right; break;
+          case 'zawiera': result = left.includes(right); break;
+          case '>':  result = Number(left) > Number(right); break;
+          case '<':  result = Number(left) < Number(right); break;
+        }
+        clog(`  ❓ "${left}" ${op} "${right}" → ${result ? 'PRAWDA' : 'FAŁSZ'}`);
+        log(`❓ ${left} ${op} ${right} → ${result ? '✓ PRAWDA' : '✗ FAŁSZ'}`, 'info');
+        if (result) {
+          if (b.children && b.children.length > 0) {
+            await executeBlocks(b.children, 0);
+          }
+        } else {
+          if (b.elseChildren && b.elseChildren.length > 0) {
+            await executeBlocks(b.elseChildren, 0);
+          }
+        }
+        break;
+      }
+
+      case 'if-random': {
+        const opts = (vals.options || 'a, b').split(',').map(s => s.trim()).filter(Boolean);
+        const chosen = opts[Math.floor(Math.random() * opts.length)];
+        log(`🎲 Wylosowano: ${chosen}`, 'say');
+        variables['_random'] = chosen;
+        clog(`  🎲 opcje: [${opts.join(', ')}] → "${chosen}"`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'set-var': {
+        const name = vals.name || 'x';
+        const value = interpolateVars(vals.value || '');
+        variables[name] = value;
+        log(`📦 ${name} = "${value}"`, 'info');
+        clog(`  📦 ${name} = "${value}"`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'show-var': {
+        const name = vals.name || 'x';
+        const val = variables[name];
+        if (val === undefined) {
+          log(`Zmienna "${name}" nie istnieje!`, 'error');
+          clog(`  ❌ zmienna "${name}" nie znaleziona`);
+        } else {
+          log(`👁 ${name}: "${val}"`, 'say');
+          clog(`  👁 ${name} = "${val}"`);
+        }
+        break;
+      }
+
+      case 'change-var': {
+        const name = vals.name || 'x';
+        const delta = evalMath(vals.delta || '1');
+        const current = Number(variables[name]) || 0;
+        const result = current + delta;
+        variables[name] = result;
+        log(`➕ ${name}: ${current} + ${delta} = ${result}`, 'info');
+        clog(`  ➕ ${name}: ${current} + ${delta} = ${result}`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'math-set': {
+        const name = vals.name || 'wynik';
+        const expr = vals.expr || '0';
+        const result = evalMath(expr);
+        variables[name] = result;
+        log(`📐 ${name} = ${interpolateVars(expr)} = ${result}`, 'info');
+        clog(`  📐 ${name} = ${expr} → ${result}`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'random-num': {
+        const name = vals.name || 'liczba';
+        const min = parseInt(interpolateVars(vals.min || '1')) || 1;
+        const max = parseInt(interpolateVars(vals.max || '6')) || 6;
+        const result = Math.floor(Math.random() * (max - min + 1)) + min;
+        variables[name] = result;
+        log(`🎯 ${name} = ${result} (${min}–${max})`, 'info');
+        clog(`  🎯 losowa ${min}–${max} → ${result}`);
+        updateVarsPanel();
+        break;
+      }
+
+      case 'debug-stop': {
+        const msg = interpolateVars(vals.msg || 'breakpoint');
+        log(`⏸ PAUZA: ${msg} — kliknij "Kontynuuj" aby wznowić`, 'debug');
+        clog(`⏸ PAUZA: ${msg}`);
+        clog('  Zmienne w momencie stopu:');
+        Object.entries(variables).forEach(([k, v]) => clog(`    ${k} = "${v}"`));
+        updateVarsPanel();
+        switchTab('vars');
+        document.getElementById('resumeBtn').style.display = '';
+        document.getElementById('runBtn').style.display = 'none';
+        debugStopped = true;
+        await new Promise(resolve => { debugResolve = resolve; });
+        document.getElementById('resumeBtn').style.display = 'none';
+        document.getElementById('runBtn').style.display = '';
+        if (debugStopped) return;
+        clog('▶ Wznowiono po pauzie');
+        switchTab('output');
+        break;
+      }
+
+      case 'ai-ask': {
+        const q = interpolateVars(vals.text || 'Co to jest AI?');
+        const loader = logLoading();
+        try {
+          const ans = await callAI(q);
+          loader.remove();
+          logAI(ans);
+          variables['_odpowiedź'] = ans;
+          clog(`  → odpowiedź: ${ans.slice(0, 80)}...`);
+          updateVarsPanel();
+        } catch(e) {
+          loader.remove();
+          log(e.message, 'error');
+          clog(`  ❌ AI błąd: ${e.message}`);
+        }
+        break;
+      }
+
+      case 'ai-story': {
+        const topic = interpolateVars(vals.topic || 'przygodach');
+        clog(`  📖 temat: "${topic}"`);
+        const loader = logLoading();
+        try {
+          const ans = await callAI(`Napisz krótką, ciekawą historyjkę dla dzieci o ${topic}. Maksymalnie 5 zdań.`);
+          loader.remove();
+          logAI(ans);
+          variables['_historia'] = ans;
+          clog(`  → historia: ${ans.slice(0, 80)}...`);
+          updateVarsPanel();
+        } catch(e) {
+          loader.remove();
+          log(e.message, 'error');
+          clog(`  ❌ AI błąd: ${e.message}`);
+        }
+        break;
+      }
+
+      case 'ai-explain': {
+        const concept = interpolateVars(vals.concept || 'grawitacji');
+        clog(`  💡 pojęcie: "${concept}"`);
+        const loader = logLoading();
+        try {
+          const ans = await callAI(`Wyjaśnij dziecku w wieku 10 lat czym jest ${concept}. Użyj prostych słów i analogii.`);
+          loader.remove();
+          logAI(ans);
+          clog(`  → wyjaśnienie: ${ans.slice(0, 80)}...`);
+        } catch(e) {
+          loader.remove();
+          log(e.message, 'error');
+          clog(`  ❌ AI błąd: ${e.message}`);
+        }
+        break;
+      }
+
+      case 'ai-translate': {
+        const txt = interpolateVars(vals.text || 'Cześć');
+        clog(`  🌍 tekst: "${txt}"`);
+        const loader = logLoading();
+        try {
+          const ans = await callAI(`Przetłumacz to zdanie na język angielski i powiedz jak to wymówić: "${txt}"`);
+          loader.remove();
+          logAI(ans);
+          clog(`  → tłumaczenie: ${ans.slice(0, 80)}...`);
+        } catch(e) {
+          loader.remove();
+          log(e.message, 'error');
+          clog(`  ❌ AI błąd: ${e.message}`);
+        }
+        break;
+      }
+
+      case 'ai-poem': {
+        const topic = interpolateVars(vals.topic || 'gwiazdkach');
+        clog(`  🎵 temat: "${topic}"`);
+        const loader = logLoading();
+        try {
+          const ans = await callAI(`Napisz krótki, wesoły wierszyk (4-6 linijek) dla dzieci o ${topic}. Musi się rymować!`);
+          loader.remove();
+          logAI(ans);
+          clog(`  → wiersz: ${ans.slice(0, 80)}...`);
+        } catch(e) {
+          loader.remove();
+          log(e.message, 'error');
+        }
+        break;
+      }
+    }
+
+    await sleep(100); // small delay between blocks
+  }
+}
+
+function interpolateVars(text) {
+  return text.replace(/\{([^}]+)\}/g, (m, name) => variables[name] !== undefined ? variables[name] : m);
+}
+
+function evalMath(expr) {
+  // first interpolate variables
+  const resolved = interpolateVars(expr);
+  // tokenize: numbers (incl. negative), operators, parens
+  const tokens = resolved.match(/-?\d+(\.\d+)?|[+\-*/()%]/g);
+  if (!tokens) return NaN;
+  // simple recursive descent parser
+  let pos = 0;
+  function peek() { return tokens[pos]; }
+  function next() { return tokens[pos++]; }
+  function parseExpr() {
+    let val = parseTerm();
+    while (peek() === '+' || peek() === '-') {
+      const op = next();
+      const right = parseTerm();
+      val = op === '+' ? val + right : val - right;
+    }
+    return val;
+  }
+  function parseTerm() {
+    let val = parseFactor();
+    while (peek() === '*' || peek() === '/' || peek() === '%') {
+      const op = next();
+      const right = parseFactor();
+      if (op === '*') val *= right;
+      else if (op === '/') val = right !== 0 ? val / right : NaN;
+      else val = right !== 0 ? val % right : NaN;
+    }
+    return val;
+  }
+  function parseFactor() {
+    if (peek() === '(') { next(); const val = parseExpr(); next(); return val; }
+    return parseFloat(next()) || 0;
+  }
+  const result = parseExpr();
+  return Number.isInteger(result) ? result : Math.round(result * 1000) / 1000;
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// ── EXAMPLES ──
+const EXAMPLES = {
+  hello: {
+    icon: '👋', title: 'Powitanie', desc: 'Zapisz imię w zmiennej i przywitaj się!',
+    versions: [
+      { label: 'prosta', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Cześć Zosia!' } },
+        { type: 'say', vals: { text: 'Miło Cię poznać!' } },
+        { type: 'say', vals: { text: 'Pa pa!' } },
+      ]},
+      { label: 'ze zmienną', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'imię', value: 'Zosia' } },
+        { type: 'say', vals: { text: 'Cześć {imię}!' } },
+        { type: 'say', vals: { text: 'Miło Cię poznać!' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: 'Pa pa, {imię}! Do zobaczenia!' } },
+      ]},
+    ],
+  },
+  animal: {
+    icon: '🐾', title: 'Losowe zwierzę', desc: 'Wylosuj zwierzę i powiedz co robi.',
+    versions: [
+      { label: 'jedno losowanie', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
+        { type: 'say', vals: { text: 'Mój zwierzak to: {_random}!' } },
+      ]},
+      { label: 'zwierzę + akcja', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
+        { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+        { type: 'if-random', vals: { options: 'śpi, je, biega, tańczy, śpiewa' } },
+        { type: 'say', vals: { text: 'Mój {zwierzę} właśnie {_random}!' } },
+      ]},
+      { label: '3 zwierzęta w pętli', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Losujemy 3 zwierzęta!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'losowanie' }, children: [
+          { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, królik' } },
+          { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'śpi, je, biega, tańczy, śpiewa' } },
+          { type: 'say', vals: { text: 'Mój {zwierzę} właśnie {_random}!' } },
+          { type: 'wait', vals: { secs: '1' } },
+        ]},
+      ]},
+    ],
+  },
+  countdown: {
+    icon: '🚀', title: 'Odliczanie', desc: 'Odlicz do startu rakiety!',
+    versions: [
+      { label: 'ręczne 3-2-1', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Uwaga! Odliczam...' } },
+        { type: 'say', vals: { text: '3...' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: '2...' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: '1...' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'say', vals: { text: '🚀 START!' } },
+      ]},
+      { label: 'pętla + matematyka', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'licznik', value: '5' } },
+        { type: 'say', vals: { text: 'Uwaga! Odliczam od {licznik}...' } },
+        { type: 'repeat', vals: { times: '5' } },
+        { type: 'group', vals: { name: 'odliczanie' }, children: [
+          { type: 'say', vals: { text: '{licznik}...' } },
+          { type: 'change-var', vals: { name: 'licznik', delta: '-1' } },
+          { type: 'wait', vals: { secs: '1' } },
+        ]},
+        { type: 'say', vals: { text: '🚀 START! Rakieta wystartowała!' } },
+      ]},
+    ],
+  },
+  story: {
+    icon: '📖', title: 'Generator zdań', desc: 'Losuj słowa i buduj śmieszne zdania.',
+    versions: [
+      { label: 'jedno zdanie', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny' } },
+        { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
+        { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat' } },
+        { type: 'say', vals: { text: '{jaki} {_random} poszedł na lody!' } },
+      ]},
+      { label: '3 zdania w pętli', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'ile', value: '0' } },
+        { type: 'say', vals: { text: 'Generuję 3 śmieszne zdania!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'generuj zdanie' }, children: [
+          { type: 'change-var', vals: { name: 'ile', delta: '1' } },
+          { type: 'if-random', vals: { options: 'Wesoły, Śpiący, Odważny, Głodny, Latający' } },
+          { type: 'set-var', vals: { name: 'jaki', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'smok, robot, kotek, pirat, astronauta' } },
+          { type: 'set-var', vals: { name: 'kto', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'poszedł na lody, poleciał na Marsa, znalazł skarb, nauczył się latać' } },
+          { type: 'say', vals: { text: '{ile}. {jaki} {kto} {_random}!' } },
+        ]},
+        { type: 'say', vals: { text: 'Wygenerowano {ile} zdań!' } },
+      ]},
+    ],
+  },
+  quiz: {
+    icon: '📎', title: 'Quiz zwierzęcy', desc: 'Grupa + Powtórz = 3 rundy quizu!',
+    versions: [
+      { label: 'bez punktów', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'say', vals: { text: 'Quiz zwierzęcy! 3 rundy!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'runda quizu' }, children: [
+          { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, delfin, orzeł' } },
+          { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'lata, pływa, biega, skacze, czołga się' } },
+          { type: 'say', vals: { text: 'Czy {zwierzę} {_random}? 🤔' } },
+          { type: 'wait', vals: { secs: '2' } },
+        ]},
+        { type: 'say', vals: { text: 'Koniec quizu! 🎉' } },
+      ]},
+      { label: 'z punktacją', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'punkty', value: '0' } },
+        { type: 'say', vals: { text: 'Quiz zwierzęcy z punktami! 3 rundy!' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'runda quizu' }, children: [
+          { type: 'if-random', vals: { options: 'kot, pies, papuga, żółw, delfin, orzeł' } },
+          { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+          { type: 'if-random', vals: { options: 'lata, pływa, biega, skacze, czołga się' } },
+          { type: 'say', vals: { text: 'Czy {zwierzę} {_random}? 🤔' } },
+          { type: 'random-num', vals: { name: 'runda_pkt', min: '1', max: '10' } },
+          { type: 'change-var', vals: { name: 'punkty', delta: '{runda_pkt}' } },
+          { type: 'say', vals: { text: '+{runda_pkt} pkt! Razem: {punkty}' } },
+          { type: 'wait', vals: { secs: '2' } },
+        ]},
+        { type: 'say', vals: { text: 'Wynik końcowy: {punkty} punktów! 🏆' } },
+      ]},
+    ],
+  },
+  mathDemo: {
+    icon: '🎲', title: 'Gra w kości', desc: 'Rzuć kostką, licz punkty i średnią!',
+    versions: [
+      { label: '1 rzut', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'random-num', vals: { name: 'kostka', min: '1', max: '6' } },
+        { type: 'say', vals: { text: '🎲 Wyrzuciłeś: {kostka}!' } },
+      ]},
+      { label: '3 rzuty + średnia', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'punkty', value: '0' } },
+        { type: 'say', vals: { text: 'Gra w kości! 3 rzuty.' } },
+        { type: 'repeat', vals: { times: '3' } },
+        { type: 'group', vals: { name: 'rzut kostką' }, children: [
+          { type: 'random-num', vals: { name: 'kostka', min: '1', max: '6' } },
+          { type: 'say', vals: { text: '🎲 Wyrzuciłeś: {kostka}' } },
+          { type: 'change-var', vals: { name: 'punkty', delta: '{kostka}' } },
+          { type: 'wait', vals: { secs: '1' } },
+        ]},
+        { type: 'say', vals: { text: 'Suma punktów: {punkty}' } },
+        { type: 'math-set', vals: { name: 'średnia', expr: '{punkty} / 3' } },
+        { type: 'say', vals: { text: 'Średnia: {średnia}' } },
+        { type: 'if-else', vals: { left: '{punkty}', op: '>', right: '12' },
+          children: [
+            { type: 'say', vals: { text: '🏆 Świetny wynik!' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '💪 Następnym razem będzie lepiej!' } },
+          ],
+        },
+      ]},
+    ],
+  },
+  ifElseDemo: {
+    icon: '❓', title: 'Jeżeli... to...', desc: 'Losuj zwierzę i sprawdź czy to kot!',
+    versions: [
+      { label: 'prosty warunek', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga' } },
+        { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+        { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'kot' },
+          children: [
+            { type: 'say', vals: { text: '🐱 Miau! To kot!' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '🤷 To nie kot, to {zwierzę}!' } },
+          ],
+        },
+      ]},
+      { label: 'wiele warunków', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'kot, pies, papuga' } },
+        { type: 'set-var', vals: { name: 'zwierzę', value: '{_random}' } },
+        { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'kot' },
+          children: [
+            { type: 'say', vals: { text: '🐱 Miau! To kot!' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '🤷 To nie kot, to {zwierzę}!' } },
+          ],
+        },
+        { type: 'if-else', vals: { left: '{zwierzę}', op: '=', right: 'papuga' },
+          children: [
+            { type: 'say', vals: { text: '🦜 Papuga mówi: Witaj!' } },
+          ],
+          elseChildren: [],
+        },
+        { type: 'say', vals: { text: 'Koniec sprawdzania!' } },
+      ]},
+    ],
+  },
+  debugDemo: {
+    icon: '⏸', title: 'Pauza demo', desc: 'Zatrzymaj program i sprawdź zmienne.',
+    versions: [
+      { label: 'z pauzami', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'licznik', value: '0' } },
+        { type: 'debug-stop', vals: { msg: 'przed losowaniem' } },
+        { type: 'if-random', vals: { options: 'jabłko, banan, winogrono, arbuz' } },
+        { type: 'set-var', vals: { name: 'owoc', value: '{_random}' } },
+        { type: 'debug-stop', vals: { msg: 'po losowaniu — sprawdź zmienne' } },
+        { type: 'say', vals: { text: 'Wylosowany owoc: {owoc}!' } },
+        { type: 'say', vals: { text: 'Sprawdź zakładkę Zmienne i Konsolę!' } },
+      ]},
+    ],
+  },
+};
+
+function cloneBlocks(arr) {
+  return arr.map(b => {
+    const clone = { id: ++blockCounter, type: b.type, vals: { ...b.vals } };
+    if (b.children) clone.children = cloneBlocks(b.children);
+    if (b.elseChildren) clone.elseChildren = cloneBlocks(b.elseChildren);
+    return clone;
+  });
+}
+
+function loadExample(name, vIdx) {
+  const example = EXAMPLES[name];
+  if (!example) return;
+  const idx = vIdx !== undefined ? vIdx : example.versions.length - 1;
+  const ver = example.versions[idx];
+  if (!ver) return;
+  blocks = cloneBlocks(ver.blocks);
+  if (blocks.length === 0 || blocks[blocks.length - 1].type !== 'end') {
+    blocks.push({ id: ++blockCounter, type: 'end', vals: {} });
+  }
+  currentExample = { name, vIdx: idx };
+  renderBlocks();
+  renderVersionBar();
+}
+
+function renderVersionBar() {
+  const bar = document.getElementById('versionBar');
+  if (!currentExample) {
+    bar.style.display = 'none';
+    return;
+  }
+  const ex = EXAMPLES[currentExample.name];
+  if (!ex || ex.versions.length <= 1) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  document.getElementById('versionBarTitle').textContent = ex.icon + ' ' + ex.title + ':';
+  const chips = document.getElementById('versionBarChips');
+  let html = `<select onchange="loadExample('${currentExample.name}',Number(this.value))" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-family:'Nunito',sans-serif;font-weight:700;font-size:12px;cursor:pointer;">`;
+  ex.versions.forEach((v, i) => {
+    html += `<option value="${i}" ${i === currentExample.vIdx ? 'selected' : ''}>v${i + 1} · ${v.label}</option>`;
+  });
+  html += `</select>`;
+  chips.innerHTML = html;
+}
+
+// ── RENDER EXAMPLES ──
+function renderExamplesGrid() {
+  const grid = document.getElementById('examplesGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  Object.entries(EXAMPLES).forEach(([key, ex]) => {
+    const lastIdx = ex.versions.length - 1;
+    let html = `<div class="example-card" onclick="loadExample('${key}')">`;
+    html += `<div class="ex-icon">${ex.icon}</div>`;
+    html += `<div class="ex-title">${ex.title}</div>`;
+    html += `<div class="ex-desc">${ex.desc}</div>`;
+    if (ex.versions.length > 1) {
+      html += `<select onclick="event.stopPropagation()" onchange="event.stopPropagation();loadExample('${key}',Number(this.value))" style="margin-top:6px;width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'Nunito',sans-serif;font-weight:700;font-size:11px;cursor:pointer;">`;
+      ex.versions.forEach((v, i) => {
+        html += `<option value="${i}" ${i === lastIdx ? 'selected' : ''}>v${i + 1} · ${v.label}</option>`;
+      });
+      html += `</select>`;
+    }
+    html += `</div>`;
+    grid.insertAdjacentHTML('beforeend', html);
+  });
+}
+
+// ── INIT ──
+const BUILD_HASH = '__COMMIT_HASH__';
+renderBlocks();
+renderExamplesGrid();
+toggleAiBlocks(false);
+document.getElementById('commitHash').textContent = BUILD_HASH;
