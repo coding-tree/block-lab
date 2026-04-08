@@ -25,6 +25,7 @@ const BLOCK_DEFS = {
   'group':      { label: '📎 Grupa', cls: 'b-group', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
   'if-else':    { label: '❓ Jeżeli', cls: 'b-if-else', inputs: [], isIfElse: true },
   'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
+  'goto':       { label: '↩ Idź do:', cls: 'b-repeat', inputs: [{ key: 'target', placeholder: 'start / nazwa grupy' }] },
 };
 
 // ── API KEY ──
@@ -801,12 +802,27 @@ async function callAI(prompt) {
 
 // ── RUNNER ──
 class EndProgram {}
+class GotoStart {}
+class GotoGroup { constructor(name) { this.name = name; } }
+
+const MAX_GOTO = 1000;
+let gotoCount = 0;
+
+function findGroup(name, blks) {
+  for (const b of blks) {
+    if (b.type === 'group' && (b.vals.name || '').trim() === name) return b;
+    if (b.children) { const found = findGroup(name, b.children); if (found) return found; }
+    if (b.elseChildren) { const found = findGroup(name, b.elseChildren); if (found) return found; }
+  }
+  return null;
+}
 
 async function runScript() {
   document.getElementById('outputBody').innerHTML = '';
   document.getElementById('consoleBody').innerHTML = '';
   variables = {};
   debugStopped = false;
+  gotoCount = 0;
   updateVarsPanel();
   switchTab('output');
 
@@ -828,7 +844,33 @@ async function runScript() {
   clog(`Liczba bloków: ${blocks.length}`);
 
   try {
-    await executeBlocks(blocks, 1);
+    let running = true;
+    let pendingGoto = null;
+    while (running) {
+      try {
+        if (pendingGoto) {
+          const group = findGroup(pendingGoto, blocks);
+          if (!group) throw new Error(`Grupa "${pendingGoto}" nie znaleziona!`);
+          clog(`↩ Skok do grupy: "${pendingGoto}"`);
+          pendingGoto = null;
+          await executeBlocks(group.children, 0);
+        } else {
+          await executeBlocks(blocks, 1);
+        }
+        running = false;
+      } catch (e) {
+        if (e instanceof GotoStart) {
+          clog('↩ Skok do startu');
+          pendingGoto = null;
+          continue;
+        }
+        if (e instanceof GotoGroup) {
+          pendingGoto = e.name;
+          continue;
+        }
+        throw e;
+      }
+    }
     if (!debugStopped) {
       log('✅ Program zakończony!', 'info');
       clog('✅ Program zakończony');
@@ -1102,6 +1144,22 @@ async function executeBlocks(blks, startIdx) {
           log(e.message, 'error');
         }
         break;
+      }
+
+      case 'goto': {
+        const target = interpolateVars(vals.target || '').trim();
+        if (!target) { log('Blok "Idź do" — brak celu!', 'error'); break; }
+        gotoCount++;
+        if (gotoCount > MAX_GOTO) {
+          throw new Error('Za dużo skoków (pętla nieskończona?) — zatrzymuję program.');
+        }
+        if (target === 'start' || target === 'Start' || target === '▶ Start programu') {
+          log(`↩ Skok do startu`, 'info');
+          throw new GotoStart();
+        } else {
+          log(`↩ Skok do grupy: "${target}"`, 'info');
+          throw new GotoGroup(target);
+        }
       }
     }
 
@@ -1379,6 +1437,65 @@ const EXAMPLES = {
         { type: 'debug-stop', vals: { msg: 'po losowaniu — sprawdź zmienne' } },
         { type: 'say', vals: { text: 'Wylosowany owoc: {owoc}!' } },
         { type: 'say', vals: { text: 'Sprawdź zakładkę Zmienne i Konsolę!' } },
+      ]},
+    ],
+  },
+  gotoDemo: {
+    icon: '↩', title: 'Idź do (goto)', desc: 'Pętla z licznikiem i gra z goto!',
+    versions: [
+      { label: 'pętla for', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'i', value: '1' } },
+        { type: 'say', vals: { text: 'Liczę do 5!' } },
+        { type: 'group', vals: { name: 'pętla' }, children: [
+          { type: 'say', vals: { text: '👉 Krok {i}' } },
+          { type: 'change-var', vals: { name: 'i', delta: '1' } },
+          { type: 'wait', vals: { secs: '0.5' } },
+          { type: 'if-else', vals: { left: '{i}', op: '<', right: '6' },
+            children: [
+              { type: 'goto', vals: { target: 'pętla' } },
+            ],
+            elseChildren: [
+              { type: 'say', vals: { text: '✅ Gotowe! Policzyłem do 5.' } },
+            ],
+          },
+        ]},
+      ]},
+      { label: 'gra w kości', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'set-var', vals: { name: 'punkty', value: '0' } },
+        { type: 'set-var', vals: { name: 'rzuty', value: '0' } },
+        { type: 'say', vals: { text: '🎲 Zbierz 20 punktów!' } },
+        { type: 'group', vals: { name: 'gra' }, children: [
+          { type: 'random-num', vals: { name: 'kostka', min: '1', max: '6' } },
+          { type: 'change-var', vals: { name: 'punkty', delta: '{kostka}' } },
+          { type: 'change-var', vals: { name: 'rzuty', delta: '1' } },
+          { type: 'say', vals: { text: '🎲 Rzut {rzuty}: wypadło {kostka} → razem {punkty}' } },
+          { type: 'wait', vals: { secs: '0.5' } },
+          { type: 'if-else', vals: { left: '{punkty}', op: '<', right: '20' },
+            children: [
+              { type: 'goto', vals: { target: 'gra' } },
+            ],
+            elseChildren: [
+              { type: 'say', vals: { text: '🏆 Wygrałeś! {punkty} pkt w {rzuty} rzutach!' } },
+            ],
+          },
+        ]},
+      ]},
+      { label: 'restart', blocks: [
+        { type: 'start', vals: {} },
+        { type: 'if-random', vals: { options: 'orzeł, reszka' } },
+        { type: 'say', vals: { text: '🪙 Wypadło: {_random}' } },
+        { type: 'wait', vals: { secs: '1' } },
+        { type: 'if-else', vals: { left: '{_random}', op: '=', right: 'reszka' },
+          children: [
+            { type: 'say', vals: { text: '↩ Reszka — rzucam jeszcze raz!' } },
+            { type: 'goto', vals: { target: 'start' } },
+          ],
+          elseChildren: [
+            { type: 'say', vals: { text: '✅ Orzeł — koniec gry!' } },
+          ],
+        },
       ]},
     ],
   },
