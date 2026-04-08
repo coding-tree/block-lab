@@ -875,9 +875,13 @@
   </div>
 
   <!-- CANVAS -->
-  <div class="canvas" id="canvas" 
-       ondragover="onDragOver(event)" 
+  <div class="canvas" id="canvas"
+       ondragover="onDragOver(event)"
        ondrop="onDrop(event)">
+    <div id="versionBar" style="display:none; padding:6px 14px; background:var(--surface); border-bottom:1px solid var(--border); display:none; align-items:center; gap:8px; font-size:12px; flex-shrink:0; z-index:5;">
+      <span id="versionBarTitle" style="font-weight:800;"></span>
+      <span id="versionBarChips" style="display:flex; gap:4px; flex-wrap:wrap;"></span>
+    </div>
     <div class="canvas-inner" id="canvasInner">
       <div class="drop-hint" id="dropHint">
         <span class="emoji">🧩</span>
@@ -912,6 +916,7 @@ let blocks = [];
 let variables = {};
 let dragSrc = null;
 let blockCounter = 0;
+let currentExample = null; // { name, vIdx }
 
 const BLOCK_DEFS = {
   'start':      { label: '🚩 Kiedy kliknięto', cls: 'b-start', inputs: [] },
@@ -1518,8 +1523,10 @@ function clearCanvas() {
   blocks = [];
   variables = {};
   debugStopped = false;
+  currentExample = null;
   resumeDebug();
   renderBlocks();
+  renderVersionBar();
   document.getElementById('outputBody').innerHTML = '';
   document.getElementById('consoleBody').innerHTML = '';
   document.getElementById('resumeBtn').style.display = 'none';
@@ -2180,10 +2187,37 @@ function cloneBlocks(arr) {
 function loadExample(name, vIdx) {
   const example = EXAMPLES[name];
   if (!example) return;
-  const ver = example.versions[vIdx !== undefined ? vIdx : example.versions.length - 1];
+  const idx = vIdx !== undefined ? vIdx : example.versions.length - 1;
+  const ver = example.versions[idx];
   if (!ver) return;
   blocks = cloneBlocks(ver.blocks);
+  currentExample = { name, vIdx: idx };
   renderBlocks();
+  renderVersionBar();
+}
+
+function renderVersionBar() {
+  const bar = document.getElementById('versionBar');
+  if (!currentExample) {
+    bar.style.display = 'none';
+    return;
+  }
+  const ex = EXAMPLES[currentExample.name];
+  if (!ex || ex.versions.length <= 1) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  document.getElementById('versionBarTitle').textContent = ex.icon + ' ' + ex.title + ':';
+  const chips = document.getElementById('versionBarChips');
+  chips.innerHTML = '';
+  ex.versions.forEach((v, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'version-chip' + (i === currentExample.vIdx ? ' active' : '');
+    chip.textContent = `v${i + 1} · ${v.label}`;
+    chip.onclick = () => loadExample(currentExample.name, i);
+    chips.appendChild(chip);
+  });
 }
 
 // ── RENDER EXAMPLES ──
