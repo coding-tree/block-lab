@@ -551,18 +551,18 @@
   .var-empty { color: var(--muted); font-size: 12px; font-style: italic; }
 
   /* ── GROUP BLOCK ── */
-  .b-group { background: #1f2a4a; color: #88aaff; border-color: #4466cc; }
+  .b-group { background: #4a1f1f; color: #ff9f9f; border-color: #ff6b6b; }
   .block-group {
     border-radius: var(--block-radius);
-    border: 2px solid #4466cc;
-    background: #1f2a4a;
+    border: 2px solid #ff6b6b;
+    background: #4a1f1f;
     position: relative;
   }
   .block-group-header {
     padding: 8px 12px;
     font-size: 13px;
     font-weight: 700;
-    color: #88aaff;
+    color: #ff9f9f;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -573,37 +573,37 @@
     padding: 8px;
     border-radius: 8px;
     background: #0f0e17aa;
-    border: 2px dashed #4466cc44;
+    border: 2px dashed #ff6b6b44;
     display: flex;
     flex-direction: column;
     gap: 0;
     transition: border-color .15s, background .15s;
   }
   .block-group-body.drag-over {
-    border-color: #4466cc;
-    background: #4466cc22;
+    border-color: #ff6b6b;
+    background: #ff6b6b22;
   }
   .block-group-hint {
     text-align: center;
-    color: #4466cc66;
+    color: #ff6b6b66;
     font-size: 11px;
     padding: 6px;
     pointer-events: none;
   }
 
   /* ── IF-ELSE BLOCK ── */
-  .b-if-else { background: #3a2d1f; color: #ffb347; border-color: #ff9f1c; }
+  .b-if-else { background: #4a1f1f; color: #ff9f9f; border-color: #ff6b6b; }
   .block-if-else {
     border-radius: var(--block-radius);
-    border: 2px solid #ff9f1c;
-    background: #3a2d1f;
+    border: 2px solid #ff6b6b;
+    background: #4a1f1f;
     position: relative;
   }
   .block-if-else-header {
     padding: 8px 12px;
     font-size: 13px;
     font-weight: 700;
-    color: #ffb347;
+    color: #ff9f9f;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -626,7 +626,7 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: #ff9f1c88;
+    color: #ff6b6b88;
     padding: 4px 4px 3px;
     cursor: default;
   }
@@ -636,15 +636,15 @@
     padding: 10px;
     border-radius: 8px;
     background: #0f0e17aa;
-    border: 2px dashed #ff9f1c33;
+    border: 2px dashed #ff6b6b33;
     display: flex;
     flex-direction: column;
     gap: 0;
     transition: border-color .15s, background .15s;
   }
   .block-if-body.drag-over {
-    border-color: #ff9f1c;
-    background: #ff9f1c22;
+    border-color: #ff6b6b;
+    background: #ff6b6b22;
   }
   .block-if-branches {
     display: flex;
