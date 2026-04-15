@@ -376,9 +376,12 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 
 /* Script drop zone */
 .script-dz {
-  height: 5px; border-radius: 3px; transition: height .15s, background .15s;
+  height: 2px; border-radius: 3px; transition: height .15s, background .15s;
 }
 .script-dz.over { height: 22px; background: #4488ff30; border: 1px dashed var(--sup); border-radius: 4px; }
+
+.script-block.drag-over-top { box-shadow: 0 -3px 0 0 var(--sup); }
+.script-block.drag-over-bottom { box-shadow: 0 3px 0 0 var(--sup); }
 
 /* Actor state editor */
 #state-editor { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -1096,6 +1099,8 @@ function buildPalette() {
         S.dragBlockType = bd.type;
         S.dragScriptIdx = null;
         ev.dataTransfer.effectAllowed = 'copy';
+        // switch to blocks tab so drop targets are visible
+        setTimeout(() => setEdTab('blocks'), 0);
       });
       b.addEventListener('click', () => {
         if (!S.selected) { toast('Wybierz najpierw aktora'); return; }
@@ -1370,6 +1375,35 @@ function renderEditorBlocks() {
       S.dragBlockType = null;
       S.dragScriptIdx = idx;
       ev.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragover', ev => {
+      ev.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const top = (ev.clientY - rect.top) < rect.height / 2;
+      el.classList.toggle('drag-over-top', top);
+      el.classList.toggle('drag-over-bottom', !top);
+    });
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+    el.addEventListener('drop', ev => {
+      ev.preventDefault();
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+      if (!S.selected) return;
+      const rect = el.getBoundingClientRect();
+      const top = (ev.clientY - rect.top) < rect.height / 2;
+      const insertIdx = top ? idx : idx + 1;
+      if (S.dragBlockType) {
+        addBlockToActor(S.selected, S.dragBlockType, {}, insertIdx);
+        S.dragBlockType = null;
+      } else if (S.dragScriptIdx !== null && S.dragScriptIdx !== insertIdx) {
+        const a = S.actors[S.selected];
+        const [moved] = a.blocks.splice(S.dragScriptIdx, 1);
+        const to = insertIdx > S.dragScriptIdx ? insertIdx - 1 : insertIdx;
+        a.blocks.splice(to, 0, moved);
+        S.dragScriptIdx = null;
+        renderEditorBlocks();
+      }
     });
 
     container.appendChild(el);
