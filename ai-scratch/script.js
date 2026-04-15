@@ -387,7 +387,7 @@ document.querySelectorAll('.block-template').forEach(el => {
 
 function onDragOver(e) {
   e.preventDefault();
-  e.dataTransfer.dropEffect = 'copy';
+  e.dataTransfer.dropEffect = dragSrc !== null ? 'move' : 'copy';
 }
 
 function onDrop(e) {
@@ -446,7 +446,7 @@ function setupDropZone(el, targetArr, path, singleSlot) {
   el.addEventListener('dragover', ev => {
     ev.preventDefault();
     ev.stopPropagation();
-    ev.dataTransfer.dropEffect = 'copy';
+    ev.dataTransfer.dropEffect = dragSrc !== null ? 'move' : 'copy';
     el.classList.add('drag-over');
   });
   el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
@@ -482,7 +482,7 @@ function createDropGap(blkArray, insertIdx) {
   gap.addEventListener('dragover', ev => {
     ev.preventDefault();
     ev.stopPropagation();
-    ev.dataTransfer.dropEffect = 'copy';
+    ev.dataTransfer.dropEffect = dragSrc !== null ? 'move' : 'copy';
     gap.classList.add('drag-over');
   });
   gap.addEventListener('dragleave', () => gap.classList.remove('drag-over'));
@@ -520,6 +520,50 @@ function collectGroupNames(blkArray) {
   return names;
 }
 
+function addBlockDropHandlers(el, idx, blkArray) {
+  el.addEventListener('dragover', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.dataTransfer.dropEffect = dragSrc !== null ? 'move' : 'copy';
+    const row = el.closest('.block-row') || el;
+    const rect = row.getBoundingClientRect();
+    const top = (ev.clientY - rect.top) < rect.height / 2;
+    row.classList.toggle('drag-over-top', top);
+    row.classList.toggle('drag-over-bottom', !top);
+  });
+  el.addEventListener('dragleave', () => {
+    const row = el.closest('.block-row') || el;
+    row.classList.remove('drag-over-top', 'drag-over-bottom');
+  });
+  el.addEventListener('drop', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const row = el.closest('.block-row') || el;
+    row.classList.remove('drag-over-top', 'drag-over-bottom');
+    const rect = row.getBoundingClientRect();
+    const top = (ev.clientY - rect.top) < rect.height / 2;
+    const insertIdx = top ? idx : idx + 1;
+    const type = ev.dataTransfer.getData('block-type');
+    if (type) {
+      const newBlock = initNewBlock(type);
+      if (newBlock) blkArray.splice(insertIdx, 0, newBlock);
+      renderBlocks();
+      return;
+    }
+    if (dragSrc !== null) {
+      const srcIdx = parseInt(String(dragSrc), 10);
+      const moved = removeByPath(String(dragSrc));
+      if (moved) {
+        // if source was in same array before target, adjust for removal shift
+        const adj = (!String(dragSrc).includes('.') && srcIdx < insertIdx) ? insertIdx - 1 : insertIdx;
+        blkArray.splice(Math.min(adj, blkArray.length), 0, moved);
+      }
+      renderBlocks();
+      dragSrc = null;
+    }
+  });
+}
+
 function renderBlockList(blkArray, container, parentPath) {
   blkArray.forEach((b, idx) => {
     const def = BLOCK_DEFS[b.type];
@@ -546,6 +590,7 @@ function renderBlockList(blkArray, container, parentPath) {
         ev.dataTransfer.setData('block-path', path);
         ev.dataTransfer.effectAllowed = 'move';
       });
+      addBlockDropHandlers(header, idx, blkArray);
       if (!drillDown) header.addEventListener('dblclick', ev => { ev.stopPropagation(); openBlockDrill(path); });
       wrapper.appendChild(header);
 
@@ -595,6 +640,7 @@ function renderBlockList(blkArray, container, parentPath) {
         ev.dataTransfer.setData('block-path', path);
         ev.dataTransfer.effectAllowed = 'move';
       });
+      addBlockDropHandlers(header, idx, blkArray);
       if (!drillDown) header.addEventListener('dblclick', ev => { ev.stopPropagation(); openBlockDrill(path); });
       wrapper.appendChild(header);
 
@@ -689,6 +735,7 @@ function renderBlockList(blkArray, container, parentPath) {
         ev.dataTransfer.setData('block-path', path);
         ev.dataTransfer.effectAllowed = 'move';
       });
+      addBlockDropHandlers(el, idx, blkArray);
 
       const row = wrapWithMoveCol(el, path, idx, blkArray.length);
       container.appendChild(row);

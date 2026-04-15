@@ -252,6 +252,8 @@
     background: var(--accent2);
     box-shadow: 0 0 8px var(--accent2);
   }
+  .block-row.drag-over-top { box-shadow: 0 -3px 0 0 var(--accent2); }
+  .block-row.drag-over-bottom { box-shadow: 0 3px 0 0 var(--accent2); }
   .block-move-col, .block-delete-col {
     display: flex;
     flex-direction: column;
