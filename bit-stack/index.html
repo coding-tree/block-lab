@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BitStack — Logic & Binary</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #09090f; --bg2: #0f0f1a; --bg3: #16162a; --bg4: #1e1e36;
+  --border: #2a2a4a; --border2: #3a3a6a;
+  --text: #e8e8f0; --muted: #6060a0;
+  --green: #00ff88; --blue: #4488ff; --purple: #bb66ff;
+  --red: #ff4466; --orange: #ffaa00; --cyan: #00ddff; --yellow: #ffd93d;
+  --font: 'Outfit', sans-serif; --mono: 'DM Mono', monospace;
+  --r: 12px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); }
+
+/* ── TOP BAR ── */
+.topbar {
+  height: 48px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 12px; z-index: 100;
+}
+.topbar .logo { font-weight: 900; font-size: 18px; letter-spacing: -.5px; }
+.topbar .logo span { color: var(--cyan); }
+.topbar .logo em { font-style: normal; color: var(--yellow); }
+.topbar .sep { width: 1px; height: 24px; background: var(--border); }
+.topbar .mode-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); font-family: var(--font);
+  font-weight: 600; font-size: 12px; cursor: pointer; transition: all .15s;
+}
+.topbar .mode-btn:hover { border-color: var(--border2); color: var(--text); }
+.topbar .mode-btn.active { background: var(--bg3); color: var(--text); border-color: var(--border2); }
+.topbar .spacer { flex: 1; }
+.topbar .badge { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+/* ── MAIN AREA ── */
+.main { height: calc(100% - 48px); display: flex; position: relative; }
+.view { display: none; width: 100%; height: 100%; }
+.view.active { display: flex; }
+
+/* ═══ SKILL TREE ═══ */
+#tree-view {
+  flex-direction: column; align-items: center; overflow-y: auto;
+  padding: 40px 20px 80px; gap: 0;
+}
+.tree-track-label {
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
+  padding: 6px 16px; border-radius: 20px; margin: 30px 0 16px;
+}
+.tree-track-label.green { color: var(--green); background: #00ff8815; }
+.tree-track-label.blue { color: var(--blue); background: #4488ff15; }
+.tree-track-label.purple { color: var(--purple); background: #bb66ff15; }
+.tree-connector { width: 2px; height: 28px; background: var(--border); }
+.tree-branch { display: flex; gap: 40px; align-items: flex-start; }
+.tree-branch .tree-connector { display: none; }
+.tree-branch-line {
+  width: 80px; height: 2px; background: var(--border); align-self: center; margin-top: 24px;
+}
+
+.tree-node {
+  width: 200px; padding: 16px; border-radius: var(--r); border: 2px solid var(--border);
+  background: var(--bg2); text-align: center; cursor: pointer; transition: all .2s;
+  position: relative;
+}
+.tree-node:hover { border-color: var(--border2); transform: translateY(-2px); }
+.tree-node.locked { opacity: .4; cursor: default; filter: grayscale(.6); }
+.tree-node.locked:hover { transform: none; border-color: var(--border); }
+.tree-node.available { border-color: var(--border2); animation: pulse-border 2s ease-in-out infinite; }
+.tree-node.complete .node-icon { filter: none; }
+.tree-node .node-icon { font-size: 28px; margin-bottom: 6px; }
+.tree-node .node-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.tree-node .node-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.tree-node .node-stars { margin-top: 8px; font-size: 14px; letter-spacing: 2px; }
+@keyframes pulse-border { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 16px -4px var(--border2); } }
+
+/* node colors */
+.tree-node.t-green { border-color: #00ff8833; }
+.tree-node.t-green.available { border-color: var(--green); box-shadow: 0 0 20px -6px var(--green); }
+.tree-node.t-green.complete { border-color: var(--green); background: #00ff8808; }
+.tree-node.t-blue { border-color: #4488ff33; }
+.tree-node.t-blue.available { border-color: var(--blue); box-shadow: 0 0 20px -6px var(--blue); }
+.tree-node.t-blue.complete { border-color: var(--blue); background: #4488ff08; }
+.tree-node.t-purple { border-color: #bb66ff33; }
+.tree-node.t-purple.available { border-color: var(--purple); box-shadow: 0 0 20px -6px var(--purple); }
+.tree-node.t-purple.complete { border-color: var(--purple); background: #bb66ff08; }
+
+/* ═══ CHALLENGE VIEW ═══ */
+#challenge-view {
+  flex-direction: column; padding: 0;
+}
+.challenge-header {
+  padding: 16px 24px; background: var(--bg2); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 16px;
+}
+.challenge-header .ch-back {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-family: var(--font); font-size: 12px;
+}
+.challenge-header .ch-back:hover { color: var(--text); border-color: var(--border2); }
+.challenge-header .ch-title { font-weight: 800; font-size: 16px; flex: 1; }
+.challenge-header .ch-goal {
+  font-size: 12px; color: var(--muted); max-width: 400px; line-height: 1.4;
+}
+.challenge-header .ch-stars { font-size: 18px; letter-spacing: 2px; }
+.challenge-body { flex: 1; display: flex; overflow: hidden; }
+
+/* ═══ CIRCUIT BUILDER ═══ */
+.circuit {
+  flex: 1; display: flex; padding: 20px; gap: 12px; overflow-x: auto; align-items: flex-start;
+}
+.circuit-col {
+  min-width: 140px; max-width: 180px; flex-shrink: 0;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r);
+  display: flex; flex-direction: column; gap: 0; overflow: hidden;
+}
+.circuit-col-header {
+  padding: 8px 12px; font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--muted); border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+.circuit-col-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.circuit-arrow {
+  font-size: 20px; color: var(--border); align-self: center; flex-shrink: 0; margin-top: 40px;
+}
+
+/* input switches */
+.input-switch {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-radius: 8px; background: var(--bg3); cursor: pointer; user-select: none;
+  transition: background .15s;
+}
+.input-switch:hover { background: var(--bg4); }
+.input-switch .sw-label { font-weight: 700; font-size: 13px; flex: 1; }
+.input-switch .sw-bulb {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+  transition: all .2s;
+}
+.input-switch.on .sw-bulb {
+  background: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 12px var(--yellow);
+}
+.input-switch .sw-val {
+  font-family: var(--mono); font-weight: 700; font-size: 14px; width: 18px; text-align: center;
+}
+.input-switch.on .sw-val { color: var(--yellow); }
+
+/* gates */
+.gate-box {
+  padding: 10px; border-radius: 8px; border: 2px solid var(--border);
+  background: var(--bg3); position: relative; cursor: default;
+}
+.gate-box .gate-label { font-weight: 800; font-size: 12px; text-align: center; margin-bottom: 4px; }
+.gate-box .gate-inputs { font-size: 10px; color: var(--muted); text-align: center; margin-bottom: 6px; font-family: var(--mono); }
+.gate-box .gate-output {
+  text-align: center; font-family: var(--mono); font-weight: 700; font-size: 16px;
+}
+.gate-box .gate-rm {
+  position: absolute; top: 4px; right: 6px; background: none; border: none;
+  color: var(--border); cursor: pointer; font-size: 12px;
+}
+.gate-box .gate-rm:hover { color: var(--red); }
+.gate-box .gate-wire-btn {
+  margin-top: 6px; width: 100%; padding: 4px; border-radius: 4px;
+  border: 1px dashed var(--border); background: transparent; color: var(--muted);
+  font-size: 10px; cursor: pointer; font-family: var(--font);
+}
+.gate-box .gate-wire-btn:hover { border-color: var(--border2); color: var(--text); }
+
+/* gate colors */
+.gate-box.g-not { border-color: #ff446644; }
+.gate-box.g-not .gate-label { color: var(--red); }
+.gate-box.g-and { border-color: #4488ff44; }
+.gate-box.g-and .gate-label { color: var(--blue); }
+.gate-box.g-or { border-color: #00ff8844; }
+.gate-box.g-or .gate-label { color: var(--green); }
+.gate-box.g-xor { border-color: #ffaa0044; }
+.gate-box.g-xor .gate-label { color: var(--orange); }
+
+.gate-output-on { color: var(--yellow) !important; }
+.gate-output-off { color: var(--muted) !important; }
+
+/* output bulbs */
+.output-bulb {
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  gap: 6px; padding: 12px; border-radius: 8px; background: var(--bg3);
+}
+.output-bulb .bulb-icon {
+  font-size: 36px; transition: all .3s;
+}
+.output-bulb.on .bulb-icon { filter: drop-shadow(0 0 12px var(--yellow)); }
+.output-bulb .bulb-val {
+  font-family: var(--mono); font-weight: 700; font-size: 18px;
+}
+.output-bulb.on .bulb-val { color: var(--yellow); }
+
+/* gate palette */
+.gate-palette {
+  width: 180px; background: var(--bg2); border-left: 1px solid var(--border);
+  padding: 12px; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;
+}
+.gate-palette h3 {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--muted); margin-bottom: 4px;
+}
+.gate-pal-item {
+  padding: 8px 10px; border-radius: 8px; border: 2px solid var(--border);
+  background: var(--bg3); cursor: grab; user-select: none; font-weight: 700;
+  font-size: 12px; text-align: center; transition: transform .1s;
+}
+.gate-pal-item:hover { transform: translateX(3px); }
+.gate-pal-item.g-not { color: var(--red); border-color: #ff446633; }
+.gate-pal-item.g-and { color: var(--blue); border-color: #4488ff33; }
+.gate-pal-item.g-or { color: var(--green); border-color: #00ff8833; }
+.gate-pal-item.g-xor { color: var(--orange); border-color: #ffaa0033; }
+
+/* drop zone */
+.gate-drop {
+  min-height: 40px; border: 2px dashed var(--border); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--border); transition: all .15s;
+}
+.gate-drop.drag-over { border-color: var(--cyan); color: var(--cyan); background: #00ddff08; }
+
+/* challenge buttons */
+.challenge-controls {
+  padding: 12px 24px; background: var(--bg2); border-top: 1px solid var(--border);
+  display: flex; gap: 12px; align-items: center;
+}
+.btn {
+  padding: 8px 20px; border-radius: 8px; border: none; font-family: var(--font);
+  font-weight: 700; font-size: 13px; cursor: pointer; transition: all .15s;
+}
+.btn-check { background: var(--green); color: #000; }
+.btn-check:hover { filter: brightness(1.1); }
+.btn-reset { background: var(--bg3); color: var(--muted); border: 1px solid var(--border); }
+.btn-reset:hover { color: var(--text); border-color: var(--border2); }
+.btn-hint { background: var(--bg3); color: var(--orange); border: 1px solid #ffaa0033; }
+.btn-hint:hover { background: #ffaa0011; }
+.challenge-msg { flex: 1; font-size: 13px; font-weight: 600; }
+.challenge-msg.success { color: var(--green); }
+.challenge-msg.fail { color: var(--red); }
+
+/* ═══ TOPIC CHALLENGE LIST ═══ */
+.topic-list {
+  max-width: 500px; margin: 0 auto; padding: 40px 20px; width: 100%;
+}
+.topic-list h2 { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
+.topic-list .topic-desc { color: var(--muted); font-size: 13px; margin-bottom: 24px; line-height: 1.5; }
+.challenge-item {
+  padding: 14px 16px; border-radius: var(--r); border: 1px solid var(--border);
+  background: var(--bg2); margin-bottom: 8px; display: flex; align-items: center;
+  gap: 12px; cursor: pointer; transition: all .15s;
+}
+.challenge-item:hover { border-color: var(--border2); transform: translateX(4px); }
+.challenge-item .ci-num { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 24px; }
+.challenge-item .ci-title { flex: 1; font-weight: 600; font-size: 13px; }
+.challenge-item .ci-stars { font-size: 14px; letter-spacing: 1px; }
+
+/* success overlay */
+.success-overlay {
+  position: fixed; inset: 0; background: #000000aa; display: flex;
+  align-items: center; justify-content: center; z-index: 200;
+}
+.success-box {
+  background: var(--bg2); border: 2px solid var(--green); border-radius: 16px;
+  padding: 40px; text-align: center; max-width: 360px;
+  animation: pop-in .3s ease-out;
+}
+.success-box h2 { font-size: 28px; margin-bottom: 8px; }
+.success-box .stars { font-size: 36px; letter-spacing: 6px; margin: 16px 0; }
+.success-box .btn { margin-top: 12px; }
+@keyframes pop-in { from { transform: scale(.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* truth table */
+.truth-table {
+  margin: 12px auto; border-collapse: collapse; font-family: var(--mono); font-size: 12px;
+}
+.truth-table th, .truth-table td {
+  padding: 4px 10px; border: 1px solid var(--border); text-align: center;
+}
+.truth-table th { background: var(--bg3); color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.truth-table td.on { color: var(--yellow); font-weight: 700; }
+.truth-table td.off { color: var(--muted); }
+.truth-table td.match { background: #00ff8812; }
+.truth-table td.mismatch { background: #ff446612; }
+
+/* wiring popup */
+.wire-popup {
+  position: absolute; z-index: 50; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px; min-width: 140px;
+  box-shadow: 0 8px 24px #00000066;
+}
+.wire-popup label {
+  display: flex; align-items: center; gap: 6px; padding: 4px 0;
+  font-size: 12px; cursor: pointer;
+}
+.wire-popup input[type=checkbox] { accent-color: var(--cyan); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo"><span>Bit</span><em>Stack</em></div>
+  <div class="sep"></div>
+  <button class="mode-btn active" onclick="showView('tree')">🌳 Skill Tree</button>
+  <button class="mode-btn" onclick="showView('sandbox')">🔧 Sandbox</button>
+  <div class="spacer"></div>
+  <div class="badge">Coding Tree</div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SKILL TREE VIEW -->
+  <div id="tree-view" class="view active"></div>
+
+  <!-- TOPIC / CHALLENGE LIST -->
+  <div id="topic-view" class="view" style="overflow-y:auto;"></div>
+
+  <!-- CHALLENGE VIEW -->
+  <div id="challenge-view" class="view"></div>
+
+  <!-- SANDBOX VIEW -->
+  <div id="sandbox-view" class="view"></div>
+
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+//  DATA: SKILL TREE & CHALLENGES
+// ════════════════════════════════════════════════════
+
+const GATE_DEFS = {
+  NOT: { label: 'NOT', kid: 'Odwroc', inputs: 1, cls: 'g-not', icon: '🔴', fn: (a) => a[0] ? 0 : 1 },
+  AND: { label: 'AND', kid: 'OBA', inputs: 2, cls: 'g-and', icon: '🔵', fn: (a) => (a[0] && a[1]) ? 1 : 0 },
+  OR:  { label: 'OR',  kid: 'LUB', inputs: 2, cls: 'g-or',  icon: '🟢', fn: (a) => (a[0] || a[1]) ? 1 : 0 },
+  XOR: { label: 'XOR', kid: 'ROZNE', inputs: 2, cls: 'g-xor', icon: '🟠', fn: (a) => (a[0] !== a[1]) ? 1 : 0 },
+};
+
+const TOPICS = [
+  // Binary Basics
+  { id: 'onoff', title: 'ON / OFF', icon: '💡', desc: 'Co to jest 1 i 0?', track: 'green', requires: [],
+    challenges: [
+      { title: 'Zapal lampke', goal: 'Kliknij przelacznik A zeby zapalic lampke.', type: 'multi-input', inputs: ['A'], targetValues: {A:1}, hint: 'Kliknij na przelacznik!' },
+      { title: 'Zgax lampke', goal: 'Lampka swieci. Zgax ja!', type: 'multi-input', inputs: ['A'], targetValues: {A:0}, startValues: {A:1}, hint: 'Kliknij przelacznik zeby go wylaczyc.' },
+      { title: '1 czy 0?', goal: 'Ustaw A=1 i B=0.', type: 'multi-input', inputs: ['A','B'], targetValues: {A:1, B:0}, hint: 'ON = 1, OFF = 0' },
+    ]
+  },
+  { id: 'binary-count', title: 'Liczenie binarne', icon: '🔢', desc: 'Liczby 0-15 w systemie dwojkowym', track: 'green', requires: ['onoff'],
+    challenges: [
+      { title: 'Pokaz 1', goal: 'Ustaw przelaczniki tak, zeby pokazaly liczbe 1 (binarnie).', type: 'binary-number', bits: 4, target: 1, hint: '1 w binarnym to 0001' },
+      { title: 'Pokaz 3', goal: 'Pokaz liczbe 3 w systemie binarnym.', type: 'binary-number', bits: 4, target: 3, hint: '3 = 2+1 = 0011' },
+      { title: 'Pokaz 5', goal: 'Pokaz liczbe 5 w systemie binarnym.', type: 'binary-number', bits: 4, target: 5, hint: '5 = 4+1 = 0101' },
+      { title: 'Pokaz 10', goal: 'Pokaz liczbe 10 w systemie binarnym.', type: 'binary-number', bits: 4, target: 10, hint: '10 = 8+2 = 1010' },
+      { title: 'Pokaz 15', goal: 'Pokaz najwieksza liczbe z 4 bitow!', type: 'binary-number', bits: 4, target: 15, hint: 'Wlacz wszystkie bity!' },
+    ]
+  },
+  { id: 'binary-convert', title: 'Konwersja', icon: '🔄', desc: 'Binarny na dziesietny i odwrotnie', track: 'green', requires: ['binary-count'],
+    challenges: [
+      { title: 'Co to 1100?', goal: 'Jaka liczbe dziesietna reprezentuje 1100?', type: 'quiz', question: '1100 w binarnym =', options: ['10','12','14','8'], answer: '12', hint: '1100 = 8+4 = 12' },
+      { title: 'Co to 1011?', goal: 'Jaka liczbe dziesietna reprezentuje 1011?', type: 'quiz', question: '1011 w binarnym =', options: ['9','11','13','7'], answer: '11', hint: '1011 = 8+2+1 = 11' },
+      { title: 'Zapisz 7', goal: 'Pokaz liczbe 7 binarnie.', type: 'binary-number', bits: 4, target: 7, hint: '7 = 4+2+1 = 0111' },
+      { title: 'Zapisz 13', goal: 'Pokaz liczbe 13 binarnie.', type: 'binary-number', bits: 4, target: 13, hint: '13 = 8+4+1 = 1101' },
+    ]
+  },
+  // Logic Gates
+  { id: 'gate-not', title: 'Bramka NOT', icon: '🔴', desc: 'Odwraca sygnal — 1 staje sie 0', track: 'blue', requires: ['binary-convert'],
+    challenges: [
+      { title: 'Odkryj NOT', goal: 'Polacz wejscie A z bramka NOT. Co sie stanie?', type: 'circuit', inputs: ['A'], layers: 1, availableGates: ['NOT'], targetFn: (v) => v.A ? 0 : 1, hint: 'NOT odwraca — gdy A=1, wyjscie=0' },
+      { title: 'NOT z 0', goal: 'Ustaw A=0 i przepusc przez NOT. Jaki wynik?', type: 'circuit', inputs: ['A'], layers: 1, availableGates: ['NOT'], targetFn: (v) => v.A ? 0 : 1, startValues: {A:0}, hint: 'NOT zamienia 0 na 1' },
+      { title: 'Podwojny NOT', goal: 'Uzyj dwoch bramek NOT jedna po drugiej. Co dostaniesz?', type: 'circuit', inputs: ['A'], layers: 2, availableGates: ['NOT','NOT'], targetFn: (v) => v.A, hint: 'NOT(NOT(x)) = x — wraca do oryginalu!' },
+    ]
+  },
+  { id: 'gate-and', title: 'Bramka AND', icon: '🔵', desc: 'OBA musza byc 1', track: 'blue', requires: ['binary-convert'],
+    challenges: [
+      { title: 'Odkryj AND', goal: 'Lampka ma sie zapalic TYLKO gdy oba przelaczniki sa ON.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['AND'], targetFn: (v) => (v.A && v.B) ? 1 : 0, hint: 'AND = oba musza byc 1' },
+      { title: 'Testuj AND', goal: 'Przetestuj wszystkie kombinacje A i B. Kiedy lampka swieci?', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['AND'], targetFn: (v) => (v.A && v.B) ? 1 : 0, hint: 'Tylko gdy A=1 I B=1' },
+      { title: '3 wejscia AND', goal: 'Lampka swieci gdy A, B i C sa wszystkie ON.', type: 'circuit', inputs: ['A','B','C'], layers: 1, availableGates: ['AND','AND'], targetFn: (v) => (v.A && v.B && v.C) ? 1 : 0, hint: 'Uzyj dwoch bramek AND' },
+    ]
+  },
+  { id: 'gate-or', title: 'Bramka OR', icon: '🟢', desc: 'Wystarczy JEDEN na 1', track: 'blue', requires: ['gate-not', 'gate-and'],
+    challenges: [
+      { title: 'Odkryj OR', goal: 'Lampka zaswieczy gdy KTORYKOLWIEK przelacznik jest ON.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['OR'], targetFn: (v) => (v.A || v.B) ? 1 : 0, hint: 'OR = wystarczy jeden' },
+      { title: 'Alarm drzwi', goal: 'Alarm (lampka) gdy KTORES drzwi sa otwarte. 3 drzwi!', type: 'circuit', inputs: ['A','B','C'], layers: 1, availableGates: ['OR','OR'], targetFn: (v) => (v.A || v.B || v.C) ? 1 : 0, hint: 'Polacz dwa OR w lancuch' },
+    ]
+  },
+  { id: 'gate-xor', title: 'Bramka XOR', icon: '🟠', desc: 'Rozne = 1, takie same = 0', track: 'blue', requires: ['gate-or'],
+    challenges: [
+      { title: 'Odkryj XOR', goal: 'Lampka swieci gdy wejscia sa ROZNE.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['XOR'], targetFn: (v) => (v.A !== v.B) ? 1 : 0, hint: 'XOR = rozne wartosci' },
+      { title: 'Zbuduj XOR', goal: 'Zbuduj XOR uzywajac tylko AND, OR i NOT!', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['AND','OR','NOT','NOT'], targetFn: (v) => (v.A !== v.B) ? 1 : 0, maxGates: 4, hint: 'XOR = (A OR B) AND NOT(A AND B)' },
+    ]
+  },
+  { id: 'gate-combine', title: 'Laczenie bramek', icon: '🔗', desc: 'Buduj zlożone uklady', track: 'blue', requires: ['gate-xor'],
+    challenges: [
+      { title: 'NOT + AND', goal: 'Lampka swieci gdy A jest ON ale B jest OFF.', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['NOT','AND'], targetFn: (v) => (v.A && !v.B) ? 1 : 0, hint: 'Odwroc B przez NOT, potem AND z A' },
+      { title: 'Kontrola dostepu', goal: 'Drzwi otworza sie gdy masz klucz (A=1) ALBO kod (B=1) I alarm jest wylaczony (C=0).', type: 'circuit', inputs: ['A','B','C'], layers: 2, availableGates: ['OR','NOT','AND'], targetFn: (v) => ((v.A || v.B) && !v.C) ? 1 : 0, hint: '(A OR B) AND NOT(C)' },
+    ]
+  },
+  // Logic Laws
+  { id: 'truth-tables', title: 'Tablice prawdy', icon: '📋', desc: 'Wszystkie kombinacje wejsc i wyjsc', track: 'purple', requires: ['gate-combine'],
+    challenges: [
+      { title: 'Tablica AND', goal: 'Wypelnij tablice prawdy dla bramki AND.', type: 'truth-table-fill', gate: 'AND', inputs: ['A','B'], hint: 'AND daje 1 tylko gdy oba sa 1' },
+      { title: 'Tablica OR', goal: 'Wypelnij tablice prawdy dla bramki OR.', type: 'truth-table-fill', gate: 'OR', inputs: ['A','B'], hint: 'OR daje 1 gdy ktorykolwiek jest 1' },
+      { title: 'Zgadnij bramke', goal: 'Patrzac na tablice prawdy — jaka to bramka?', type: 'quiz', question: 'A=0,B=0→0 | A=0,B=1→1 | A=1,B=0→1 | A=1,B=1→0', options: ['AND','OR','XOR','NOT'], answer: 'XOR', hint: 'Wynik=1 gdy wejscia sa rozne' },
+    ]
+  },
+  { id: 'demorgan1', title: 'De Morgan 1', icon: '⚡', desc: 'NOT(A AND B) = NOT A OR NOT B', track: 'purple', requires: ['truth-tables'],
+    challenges: [
+      { title: 'Zbuduj NOT(A AND B)', goal: 'Polacz A i B przez AND, potem NOT.', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['AND','NOT'], targetFn: (v) => !(v.A && v.B) ? 1 : 0, hint: 'Najpierw AND, potem NOT na wyniku' },
+      { title: 'Zbuduj to samo inaczej', goal: 'Uzyj TYLKO bramek NOT i OR zeby uzyskac ten sam wynik!', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['NOT','NOT','OR'], targetFn: (v) => !(v.A && v.B) ? 1 : 0, hint: 'NOT(A) OR NOT(B) — odwroc kazde wejscie osobno!' },
+      { title: 'Porownaj', goal: 'Obie wersje daja to samo? Sprawdz tablice prawdy!', type: 'truth-table-compare', fn1: (a,b) => !(a&&b)?1:0, fn2: (a,b) => (!a||!b)?1:0, label1: 'NOT(A AND B)', label2: 'NOT A OR NOT B', hint: 'Powinny byc identyczne!' },
+    ]
+  },
+  { id: 'demorgan2', title: 'De Morgan 2', icon: '⚡', desc: 'NOT(A OR B) = NOT A AND NOT B', track: 'purple', requires: ['truth-tables'],
+    challenges: [
+      { title: 'Zbuduj NOT(A OR B)', goal: 'Polacz A i B przez OR, potem NOT.', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['OR','NOT'], targetFn: (v) => !(v.A || v.B) ? 1 : 0, hint: 'Najpierw OR, potem NOT' },
+      { title: 'Zbuduj to samo inaczej', goal: 'Uzyj TYLKO bramek NOT i AND!', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['NOT','NOT','AND'], targetFn: (v) => !(v.A || v.B) ? 1 : 0, hint: 'NOT(A) AND NOT(B)' },
+      { title: 'Porownaj', goal: 'Obie wersje daja to samo?', type: 'truth-table-compare', fn1: (a,b) => !(a||b)?1:0, fn2: (a,b) => (!a&&!b)?1:0, label1: 'NOT(A OR B)', label2: 'NOT A AND NOT B', hint: 'Identyczne — to prawo De Morgana!' },
+    ]
+  },
+  { id: 'demorgan-prove', title: 'Buduj i udowodnij', icon: '🏆', desc: 'Uzyj praw De Morgana do upraszczania', track: 'purple', requires: ['demorgan1','demorgan2'],
+    challenges: [
+      { title: 'Uprość uklad', goal: 'Ten uklad ma 4 bramki: NOT→AND→NOT. Zbuduj rownowazny z 3 bramkami uzywajac prawa De Morgana.', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['NOT','NOT','OR'], targetFn: (v) => !(v.A && v.B) ? 1 : 0, maxGates: 3, hint: 'NOT(A AND B) = NOT(A) OR NOT(B)' },
+      { title: 'Zaprojektuj swoj uklad', goal: 'Sandbox: zbuduj dowolny uklad i sprawdz jego tablice prawdy!', type: 'sandbox', inputs: ['A','B'], hint: 'Eksperymentuj!' },
+    ]
+  },
+];
+
+// ════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════
+let progress = JSON.parse(localStorage.getItem('bitstack-progress') || '{}');
+let currentTopic = null;
+let currentChallenge = null;
+let currentChallengeIdx = 0;
+
+// circuit state
+let circuitInputs = [];
+let circuitValues = {};
+let circuitLayers = [[], []]; // each layer = array of {type, wires:[inputIndices]}
+let circuitOutputs = [];
+
+function saveProgress() { localStorage.setItem('bitstack-progress', JSON.stringify(progress)); }
+
+function getTopicProgress(id) { return progress[id] || { stars: [] }; }
+function isTopicComplete(id) {
+  const p = getTopicProgress(id);
+  const t = TOPICS.find(t => t.id === id);
+  return t && p.stars && p.stars.length >= t.challenges.length && p.stars.every(s => s > 0);
+}
+function isTopicAvailable(id) {
+  const t = TOPICS.find(t => t.id === id);
+  if (!t) return false;
+  return t.requires.every(r => isTopicComplete(r));
+}
+
+// ════════════════════════════════════════════════════
+//  VIEWS
+// ════════════════════════════════════════════════════
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+
+  if (name === 'tree') {
+    document.getElementById('tree-view').classList.add('active');
+    document.querySelectorAll('.mode-btn')[0].classList.add('active');
+    renderTree();
+  } else if (name === 'sandbox') {
+    document.getElementById('sandbox-view').classList.add('active');
+    document.querySelectorAll('.mode-btn')[1].classList.add('active');
+    openSandbox();
+  } else if (name === 'topic') {
+    document.getElementById('topic-view').classList.add('active');
+  } else if (name === 'challenge') {
+    document.getElementById('challenge-view').classList.add('active');
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  SKILL TREE RENDER
+// ════════════════════════════════════════════════════
+function renderTree() {
+  const el = document.getElementById('tree-view');
+  let html = '';
+
+  const tracks = [
+    { label: 'Binary Basics', cls: 'green', ids: ['onoff','binary-count','binary-convert'] },
+    { label: 'Logic Gates', cls: 'blue', ids: ['gate-not','gate-and','gate-or','gate-xor','gate-combine'] },
+    { label: 'Logic Laws', cls: 'purple', ids: ['truth-tables','demorgan1','demorgan2','demorgan-prove'] },
+  ];
+
+  tracks.forEach(track => {
+    html += `<div class="tree-track-label ${track.cls}">${track.label}</div>`;
+    track.ids.forEach((id, i) => {
+      const t = TOPICS.find(x => x.id === id);
+      const complete = isTopicComplete(id);
+      const available = isTopicAvailable(id);
+      const locked = !complete && !available;
+      const p = getTopicProgress(id);
+      const starsHtml = t.challenges.map((_, ci) => {
+        const s = (p.stars && p.stars[ci]) || 0;
+        return s >= 1 ? '⭐' : '☆';
+      }).join('');
+
+      let cls = `tree-node t-${track.cls}`;
+      if (complete) cls += ' complete';
+      else if (available) cls += ' available';
+      else cls += ' locked';
+
+      // Branch layout for parallel nodes
+      const isParallel = (id === 'gate-not' || id === 'gate-and') || (id === 'demorgan1' || id === 'demorgan2');
+      const pairStart = (id === 'gate-not' || id === 'demorgan1');
+      const pairEnd = (id === 'gate-and' || id === 'demorgan2');
+
+      if (pairStart) html += '<div class="tree-branch">';
+
+      if (i > 0 && !isParallel) html += '<div class="tree-connector"></div>';
+
+      html += `<div class="${cls}" onclick="${locked ? '' : `openTopic('${id}')`}">
+        <div class="node-icon">${t.icon}</div>
+        <div class="node-title">${t.title}</div>
+        <div class="node-desc">${t.desc}</div>
+        <div class="node-stars">${starsHtml}</div>
+      </div>`;
+
+      if (pairStart) html += '<div class="tree-branch-line"></div>';
+      if (pairEnd) html += '</div>';
+    });
+  });
+
+  el.innerHTML = html;
+}
+
+// ════════════════════════════════════════════════════
+//  TOPIC CHALLENGE LIST
+// ════════════════════════════════════════════════════
+function openTopic(id) {
+  currentTopic = TOPICS.find(t => t.id === id);
+  if (!currentTopic) return;
+  const p = getTopicProgress(id);
+  const el = document.getElementById('topic-view');
+
+  let html = `<div class="topic-list">
+    <button class="btn btn-reset" onclick="showView('tree')" style="margin-bottom:16px;">← Powrot</button>
+    <h2>${currentTopic.icon} ${currentTopic.title}</h2>
+    <p class="topic-desc">${currentTopic.desc}</p>`;
+
+  currentTopic.challenges.forEach((ch, i) => {
+    const stars = (p.stars && p.stars[i]) || 0;
+    const starsHtml = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+    html += `<div class="challenge-item" onclick="openChallenge('${id}', ${i})">
+      <div class="ci-num">#${i+1}</div>
+      <div class="ci-title">${ch.title}</div>
+      <div class="ci-stars">${starsHtml}</div>
+    </div>`;
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
+  showView('topic');
+}
+
+// ════════════════════════════════════════════════════
+//  CHALLENGE
+// ════════════════════════════════════════════════════
+function openChallenge(topicId, idx) {
+  currentTopic = TOPICS.find(t => t.id === topicId);
+  currentChallengeIdx = idx;
+  currentChallenge = currentTopic.challenges[idx];
+  const ch = currentChallenge;
+
+  if (ch.type === 'binary-number') { renderBinaryChallenge(ch); return; }
+  if (ch.type === 'quiz') { renderQuizChallenge(ch); return; }
+  if (ch.type === 'truth-table-fill') { renderTruthTableFill(ch); return; }
+  if (ch.type === 'truth-table-compare') { renderTruthTableCompare(ch); return; }
+  if (ch.type === 'circuit' || ch.type === 'multi-input' || ch.type === 'sandbox') { renderCircuitChallenge(ch); return; }
+}
+
+function awardStars(stars) {
+  const id = currentTopic.id;
+  if (!progress[id]) progress[id] = { stars: [] };
+  const prev = progress[id].stars[currentChallengeIdx] || 0;
+  progress[id].stars[currentChallengeIdx] = Math.max(prev, stars);
+  saveProgress();
+}
+
+function showSuccess(stars) {
+  awardStars(stars);
+  const starsHtml = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+  const hasNext = currentChallengeIdx < currentTopic.challenges.length - 1;
+  const overlay = document.createElement('div');
+  overlay.className = 'success-overlay';
+  overlay.innerHTML = `<div class="success-box">
+    <h2>Brawo! 🎉</h2>
+    <div class="stars">${starsHtml}</div>
+    <button class="btn btn-check" onclick="this.closest('.success-overlay').remove();${hasNext ? `openChallenge('${currentTopic.id}', ${currentChallengeIdx+1})` : `openTopic('${currentTopic.id}')`}">${hasNext ? 'Nastepne →' : 'Powrot'}</button>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+// ════════════════════════════════════════════════════
+//  BINARY NUMBER CHALLENGE
+// ════════════════════════════════════════════════════
+function renderBinaryChallenge(ch) {
+  const el = document.getElementById('challenge-view');
+  const bits = ch.bits || 4;
+  const bitValues = new Array(bits).fill(0);
+
+  function render() {
+    const decimal = bitValues.reduce((sum, b, i) => sum + b * Math.pow(2, bits - 1 - i), 0);
+    let bitsHtml = '';
+    for (let i = 0; i < bits; i++) {
+      const weight = Math.pow(2, bits - 1 - i);
+      bitsHtml += `<div class="input-switch ${bitValues[i]?'on':''}" onclick="this.classList.toggle('on'); window._bitVals[${i}]=window._bitVals[${i}]?0:1; window._bitRender();" style="width:80px;flex-direction:column;padding:12px;">
+        <div style="font-size:9px;color:var(--muted);font-family:var(--mono);">${weight}</div>
+        <div class="sw-bulb">${bitValues[i]?'💡':'⚫'}</div>
+        <div class="sw-val">${bitValues[i]}</div>
+      </div>`;
+    }
+    el.innerHTML = `
+      <div class="challenge-header">
+        <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+        <div class="ch-title">${ch.title}</div>
+        <div class="ch-goal">${ch.goal}</div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+        <div style="display:flex;gap:12px;">${bitsHtml}</div>
+        <div style="font-family:var(--mono);font-size:36px;font-weight:900;">= ${decimal}</div>
+        <div style="font-family:var(--mono);font-size:14px;color:var(--muted);">cel: ${ch.target}</div>
+      </div>
+      <div class="challenge-controls">
+        <button class="btn btn-check" onclick="window._bitCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
+        <div class="challenge-msg" id="ch-msg"></div>
+      </div>`;
+  }
+
+  window._bitVals = bitValues;
+  window._bitRender = render;
+  window._bitCheck = () => {
+    const decimal = bitValues.reduce((sum, b, i) => sum + b * Math.pow(2, (ch.bits||4) - 1 - i), 0);
+    if (decimal === ch.target) {
+      showSuccess(3);
+    } else {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = `${decimal} ≠ ${ch.target} — sprobuj jeszcze raz!`;
+    }
+  };
+
+  showView('challenge');
+  render();
+}
+
+// ════════════════════════════════════════════════════
+//  QUIZ CHALLENGE
+// ════════════════════════════════════════════════════
+function renderQuizChallenge(ch) {
+  const el = document.getElementById('challenge-view');
+  let optionsHtml = ch.options.map(o =>
+    `<button class="btn btn-reset" style="padding:12px 24px;font-size:15px;min-width:80px;"
+       onclick="window._quizAnswer('${o}')">${o}</button>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="challenge-header">
+      <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+      <div class="ch-title">${ch.title}</div>
+      <div class="ch-goal">${ch.goal}</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+      <div style="font-size:18px;font-weight:700;">${ch.question}</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">${optionsHtml}</div>
+      <div class="challenge-msg" id="ch-msg"></div>
+    </div>
+    <div class="challenge-controls">
+      <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
+    </div>`;
+
+  window._quizAnswer = (ans) => {
+    if (ans === ch.answer) {
+      showSuccess(3);
+    } else {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = `Nie — sprobuj jeszcze raz!`;
+    }
+  };
+
+  showView('challenge');
+}
+
+// ════════════════════════════════════════════════════
+//  TRUTH TABLE FILL
+// ════════════════════════════════════════════════════
+function renderTruthTableFill(ch) {
+  const el = document.getElementById('challenge-view');
+  const gate = GATE_DEFS[ch.gate];
+  const combos = [[0,0],[0,1],[1,0],[1,1]];
+  const answers = new Array(4).fill(null);
+
+  function render() {
+    let rows = combos.map((c, i) => {
+      const btnVal = answers[i] === null ? '?' : answers[i];
+      const cls = answers[i] === null ? '' : (answers[i] ? 'on' : 'off');
+      return `<tr>
+        <td class="${c[0]?'on':'off'}">${c[0]}</td>
+        <td class="${c[1]?'on':'off'}">${c[1]}</td>
+        <td><button class="btn btn-reset" style="min-width:40px;padding:4px 12px;" onclick="window._ttToggle(${i})">${btnVal}</button></td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="challenge-header">
+        <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+        <div class="ch-title">${ch.title}</div>
+        <div class="ch-goal">${ch.goal}</div>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div style="font-size:18px;font-weight:700;margin-bottom:16px;">${gate.icon} ${gate.label}</div>
+        <table class="truth-table">
+          <tr><th>A</th><th>B</th><th>Wynik</th></tr>
+          ${rows}
+        </table>
+      </div>
+      <div class="challenge-controls">
+        <button class="btn btn-check" onclick="window._ttCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
+        <div class="challenge-msg" id="ch-msg"></div>
+      </div>`;
+  }
+
+  window._ttToggle = (i) => {
+    if (answers[i] === null) answers[i] = 0;
+    else if (answers[i] === 0) answers[i] = 1;
+    else answers[i] = null;
+    render();
+  };
+
+  window._ttCheck = () => {
+    if (answers.some(a => a === null)) {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Wypelnij wszystkie pola!';
+      return;
+    }
+    const correct = combos.every((c, i) => gate.fn(c) === answers[i]);
+    if (correct) showSuccess(3);
+    else {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Nie do konca — sprawdz jeszcze raz!';
+    }
+  };
+
+  showView('challenge');
+  render();
+}
+
+// ════════════════════════════════════════════════════
+//  TRUTH TABLE COMPARE
+// ════════════════════════════════════════════════════
+function renderTruthTableCompare(ch) {
+  const el = document.getElementById('challenge-view');
+  const combos = [[0,0],[0,1],[1,0],[1,1]];
+
+  let rows = combos.map(c => {
+    const r1 = ch.fn1(c[0], c[1]);
+    const r2 = ch.fn2(c[0], c[1]);
+    const match = r1 === r2;
+    return `<tr>
+      <td class="${c[0]?'on':'off'}">${c[0]}</td>
+      <td class="${c[1]?'on':'off'}">${c[1]}</td>
+      <td class="${r1?'on':'off'} ${match?'match':'mismatch'}">${r1}</td>
+      <td class="${r2?'on':'off'} ${match?'match':'mismatch'}">${r2}</td>
+      <td>${match ? '✅' : '❌'}</td>
+    </tr>`;
+  }).join('');
+
+  const allMatch = combos.every(c => ch.fn1(c[0],c[1]) === ch.fn2(c[0],c[1]));
+
+  el.innerHTML = `
+    <div class="challenge-header">
+      <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+      <div class="ch-title">${ch.title}</div>
+      <div class="ch-goal">${ch.goal}</div>
+    </div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <table class="truth-table">
+        <tr><th>A</th><th>B</th><th>${ch.label1}</th><th>${ch.label2}</th><th>=?</th></tr>
+        ${rows}
+      </table>
+      <div style="margin-top:20px;font-size:18px;font-weight:700;color:${allMatch?'var(--green)':'var(--red)'};">
+        ${allMatch ? '✅ Identyczne! To jest prawo De Morgana!' : '❌ Nie pasuja...'}
+      </div>
+    </div>
+    <div class="challenge-controls">
+      <button class="btn btn-check" onclick="showSuccess(3)">Rozumiem! ✓</button>
+      <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
+    </div>`;
+
+  showView('challenge');
+}
+
+// ════════════════════════════════════════════════════
+//  CIRCUIT CHALLENGE (core builder)
+// ════════════════════════════════════════════════════
+function renderCircuitChallenge(ch) {
+  const inputs = ch.inputs || ['A','B'];
+  const numLayers = ch.layers || 0;
+  const available = ch.availableGates || ['NOT','AND','OR','XOR'];
+
+  // init circuit state
+  circuitInputs = inputs;
+  circuitValues = {};
+  inputs.forEach(name => circuitValues[name] = ch.startValues ? (ch.startValues[name] || 0) : 0);
+  circuitLayers = [];
+  for (let i = 0; i < Math.max(numLayers, 1); i++) circuitLayers.push([]);
+  circuitOutputs = [];
+
+  renderCircuitUI(ch, available);
+  showView('challenge');
+}
+
+function renderCircuitUI(ch, available) {
+  const el = document.getElementById('challenge-view');
+  evaluateCircuit();
+
+  // inputs column
+  let inputsHtml = circuitInputs.map((name, i) =>
+    `<div class="input-switch ${circuitValues[name]?'on':''}" onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;renderCircuitUI(window._curCh, window._curAvail);">
+      <div class="sw-label">${name}</div>
+      <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
+      <div class="sw-val">${circuitValues[name]}</div>
+    </div>`
+  ).join('');
+
+  // layer columns
+  let layersHtml = '';
+  circuitLayers.forEach((layer, li) => {
+    let gatesHtml = '';
+    layer.forEach((gate, gi) => {
+      const def = GATE_DEFS[gate.type];
+      const val = gate._output;
+      const wireLabels = (gate.wires || []).map(w => {
+        if (li === 0) return circuitInputs[w] || '?';
+        return `L${li}[${w}]`;
+      }).join(', ') || 'brak';
+
+      gatesHtml += `<div class="gate-box ${def.cls}">
+        <button class="gate-rm" onclick="circuitLayers[${li}].splice(${gi},1);renderCircuitUI(window._curCh,window._curAvail);">✕</button>
+        <div class="gate-label">${def.icon} ${def.label}</div>
+        <div class="gate-inputs">← ${wireLabels}</div>
+        <div class="gate-output ${val?'gate-output-on':'gate-output-off'}">${val}</div>
+        <button class="gate-wire-btn" onclick="openWirePopup(${li},${gi},event)">🔌 Polacz</button>
+      </div>`;
+    });
+
+    gatesHtml += `<div class="gate-drop" data-layer="${li}"
+      ondragover="event.preventDefault();this.classList.add('drag-over')"
+      ondragleave="this.classList.remove('drag-over')"
+      ondrop="onGateDrop(event,${li})">+ dodaj bramke</div>`;
+
+    layersHtml += `<div class="circuit-arrow">→</div>
+      <div class="circuit-col">
+        <div class="circuit-col-header">Warstwa ${li+1}</div>
+        <div class="circuit-col-body">${gatesHtml}</div>
+      </div>`;
+  });
+
+  // output column
+  const finalOutput = getFinalOutput();
+  let outputHtml = `<div class="output-bulb ${finalOutput?'on':''}">
+    <div class="bulb-icon">${finalOutput?'💡':'⚫'}</div>
+    <div class="bulb-val">${finalOutput}</div>
+  </div>`;
+
+  // palette
+  let paletteHtml = '<h3>Bramki</h3>';
+  (available.length > 0 ? [...new Set(available)] : Object.keys(GATE_DEFS)).forEach(type => {
+    const def = GATE_DEFS[type];
+    const usedCount = circuitLayers.flat().filter(g => g.type === type).length;
+    const maxCount = available.filter(a => a === type).length;
+    const canAdd = available.length === 0 || usedCount < maxCount;
+    if (!canAdd) return;
+    paletteHtml += `<div class="gate-pal-item ${def.cls}" draggable="true"
+      ondragstart="event.dataTransfer.setData('gate-type','${type}')"
+      onclick="addGateToFirstEmpty('${type}')">${def.icon} ${def.label}</div>`;
+  });
+
+  const isMultiInput = ch.type === 'multi-input';
+
+  el.innerHTML = `
+    <div class="challenge-header">
+      <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+      <div class="ch-title">${ch.title}</div>
+      <div class="ch-goal">${ch.goal}</div>
+    </div>
+    <div class="challenge-body">
+      <div class="circuit">
+        <div class="circuit-col">
+          <div class="circuit-col-header">Wejscia</div>
+          <div class="circuit-col-body">${inputsHtml}</div>
+        </div>
+        ${isMultiInput ? '' : layersHtml}
+        ${isMultiInput ? '' : `<div class="circuit-arrow">→</div>
+        <div class="circuit-col">
+          <div class="circuit-col-header">Wyjscie</div>
+          <div class="circuit-col-body">${outputHtml}</div>
+        </div>`}
+      </div>
+      ${isMultiInput ? '' : `<div class="gate-palette">${paletteHtml}</div>`}
+    </div>
+    <div class="challenge-controls">
+      <button class="btn btn-check" onclick="checkCircuitChallenge()">Sprawdz ✓</button>
+      <button class="btn btn-reset" onclick="circuitLayers.forEach(l=>l.length=0);renderCircuitUI(window._curCh,window._curAvail);">🗑 Reset</button>
+      <button class="btn btn-hint" onclick="alert(window._curCh.hint||'')">💡 Podpowiedz</button>
+      <div class="challenge-msg" id="ch-msg"></div>
+    </div>`;
+
+  window._curCh = ch;
+  window._curAvail = available;
+}
+
+function addGateToFirstEmpty(type) {
+  for (let i = 0; i < circuitLayers.length; i++) {
+    if (circuitLayers[i].length < 4) {
+      circuitLayers[i].push({ type, wires: [] });
+      renderCircuitUI(window._curCh, window._curAvail);
+      return;
+    }
+  }
+}
+
+function onGateDrop(ev, layerIdx) {
+  ev.preventDefault();
+  ev.target.classList.remove('drag-over');
+  const type = ev.dataTransfer.getData('gate-type');
+  if (!type || !GATE_DEFS[type]) return;
+
+  // check available count
+  const avail = window._curAvail || [];
+  if (avail.length > 0) {
+    const usedCount = circuitLayers.flat().filter(g => g.type === type).length;
+    const maxCount = avail.filter(a => a === type).length;
+    if (usedCount >= maxCount) return;
+  }
+
+  circuitLayers[layerIdx].push({ type, wires: [] });
+  renderCircuitUI(window._curCh, window._curAvail);
+}
+
+function openWirePopup(layerIdx, gateIdx, ev) {
+  ev.stopPropagation();
+  // close existing
+  document.querySelectorAll('.wire-popup').forEach(p => p.remove());
+
+  const gate = circuitLayers[layerIdx][gateIdx];
+  const def = GATE_DEFS[gate.type];
+
+  // available sources
+  let sources = [];
+  if (layerIdx === 0) {
+    sources = circuitInputs.map((name, i) => ({ idx: i, label: name }));
+  } else {
+    sources = circuitLayers[layerIdx - 1].map((g, i) => ({ idx: i, label: `${GATE_DEFS[g.type].label}[${i}]` }));
+  }
+
+  let html = sources.map(s => {
+    const checked = (gate.wires || []).includes(s.idx);
+    return `<label><input type="checkbox" ${checked?'checked':''} onchange="toggleWire(${layerIdx},${gateIdx},${s.idx},this.checked)"> ${s.label}</label>`;
+  }).join('');
+
+  const popup = document.createElement('div');
+  popup.className = 'wire-popup';
+  popup.innerHTML = `<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px;">POLACZ Z:</div>${html}`;
+  popup.style.position = 'fixed';
+  popup.style.left = ev.clientX + 'px';
+  popup.style.top = ev.clientY + 'px';
+  document.body.appendChild(popup);
+
+  const close = (e) => { if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', close); } };
+  setTimeout(() => document.addEventListener('click', close), 0);
+}
+
+function toggleWire(layerIdx, gateIdx, sourceIdx, on) {
+  const gate = circuitLayers[layerIdx][gateIdx];
+  if (!gate.wires) gate.wires = [];
+  const def = GATE_DEFS[gate.type];
+  if (on) {
+    if (gate.wires.length < def.inputs) gate.wires.push(sourceIdx);
+  } else {
+    gate.wires = gate.wires.filter(w => w !== sourceIdx);
+  }
+  document.querySelectorAll('.wire-popup').forEach(p => p.remove());
+  renderCircuitUI(window._curCh, window._curAvail);
+}
+
+function evaluateCircuit() {
+  circuitLayers.forEach((layer, li) => {
+    layer.forEach(gate => {
+      const def = GATE_DEFS[gate.type];
+      let inputVals = [];
+      if (li === 0) {
+        inputVals = (gate.wires || []).map(w => circuitValues[circuitInputs[w]] || 0);
+      } else {
+        inputVals = (gate.wires || []).map(w => {
+          const prev = circuitLayers[li-1][w];
+          return prev ? (prev._output || 0) : 0;
+        });
+      }
+      // pad missing inputs with 0
+      while (inputVals.length < def.inputs) inputVals.push(0);
+      gate._output = def.fn(inputVals);
+    });
+  });
+}
+
+function getFinalOutput() {
+  const lastLayer = circuitLayers[circuitLayers.length - 1];
+  if (lastLayer.length === 0) return 0;
+  return lastLayer[lastLayer.length - 1]._output || 0;
+}
+
+function checkCircuitChallenge() {
+  const ch = window._curCh;
+  if (!ch) return;
+
+  if (ch.type === 'multi-input') {
+    // check if all input values match target
+    const target = ch.targetValues || {};
+    const correct = Object.keys(target).every(k => circuitValues[k] === target[k]);
+    if (correct) showSuccess(3);
+    else {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Nie pasuje — sprawdz przelaczniki!';
+    }
+    return;
+  }
+
+  if (ch.targetFn) {
+    // test all combinations
+    const inputs = ch.inputs || ['A','B'];
+    const combos = [];
+    const n = inputs.length;
+    for (let i = 0; i < (1 << n); i++) {
+      const combo = {};
+      inputs.forEach((name, bit) => combo[name] = (i >> (n - 1 - bit)) & 1);
+      combos.push(combo);
+    }
+
+    let allCorrect = true;
+    for (const combo of combos) {
+      // set inputs
+      inputs.forEach(name => circuitValues[name] = combo[name]);
+      evaluateCircuit();
+      const got = getFinalOutput();
+      const expected = ch.targetFn(combo);
+      if (got !== expected) { allCorrect = false; break; }
+    }
+
+    // restore original values
+    inputs.forEach(name => circuitValues[name] = (ch.startValues && ch.startValues[name]) || 0);
+    evaluateCircuit();
+
+    if (allCorrect) {
+      const gateCount = circuitLayers.flat().length;
+      let stars = 1;
+      if (!ch.maxGates || gateCount <= ch.maxGates) stars = 2;
+      if (!ch.maxGates || gateCount <= (ch.maxGates || 99) - 1) stars = 3;
+      showSuccess(stars);
+    } else {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Nie dla wszystkich kombinacji — sprawdz polaczenia!';
+      renderCircuitUI(ch, window._curAvail);
+    }
+    return;
+  }
+}
+
+// ════════════════════════════════════════════════════
+//  SANDBOX
+// ════════════════════════════════════════════════════
+function openSandbox() {
+  const ch = {
+    title: 'Sandbox',
+    goal: 'Buduj dowolne uklady logiczne!',
+    type: 'sandbox',
+    inputs: ['A', 'B', 'C'],
+    layers: 3,
+    availableGates: [],
+    hint: 'Eksperymentuj! Dodaj bramki i polacz je.',
+  };
+  currentTopic = { id: '_sandbox', challenges: [ch] };
+  currentChallengeIdx = 0;
+  currentChallenge = ch;
+
+  circuitInputs = ch.inputs;
+  circuitValues = { A: 0, B: 0, C: 0 };
+  circuitLayers = [[], [], []];
+
+  const el = document.getElementById('sandbox-view');
+  el.innerHTML = '';
+
+  // reuse challenge view inside sandbox
+  renderCircuitUI(ch, []);
+
+  // move challenge-view content into sandbox-view
+  el.innerHTML = document.getElementById('challenge-view').innerHTML;
+  document.getElementById('challenge-view').innerHTML = '';
+
+  // fix back button
+  el.querySelector('.ch-back').onclick = () => showView('tree');
+}
+
+// ════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════
+renderTree();
+</script>
+</body>
+</html>
