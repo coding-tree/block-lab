@@ -829,7 +829,7 @@ function renderCircuitChallenge(ch) {
 }
 
 function renderCircuitUI(ch, available) {
-  const el = document.getElementById('challenge-view');
+  const el = document.getElementById(ch.type === 'sandbox' ? 'sandbox-view' : 'challenge-view');
   evaluateCircuit();
 
   // inputs column
@@ -898,7 +898,7 @@ function renderCircuitUI(ch, available) {
 
   el.innerHTML = `
     <div class="challenge-header">
-      <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+      <button class="ch-back" onclick="${ch.type==='sandbox' ? "showView('tree')" : `openTopic('${currentTopic.id}')`}">← Powrot</button>
       <div class="ch-title">${ch.title}</div>
       <div class="ch-goal">${ch.goal}</div>
     </div>
@@ -1023,9 +1023,15 @@ function evaluateCircuit() {
 }
 
 function getFinalOutput() {
-  const lastLayer = circuitLayers[circuitLayers.length - 1];
-  if (lastLayer.length === 0) return 0;
-  return lastLayer[lastLayer.length - 1]._output || 0;
+  // find last non-empty layer
+  for (let i = circuitLayers.length - 1; i >= 0; i--) {
+    if (circuitLayers[i].length > 0) {
+      return circuitLayers[i][circuitLayers[i].length - 1]._output || 0;
+    }
+  }
+  // no gates — pass through first input
+  if (circuitInputs.length > 0) return circuitValues[circuitInputs[0]] || 0;
+  return 0;
 }
 
 function checkCircuitChallenge() {
@@ -1105,18 +1111,7 @@ function openSandbox() {
   circuitValues = { A: 0, B: 0, C: 0 };
   circuitLayers = [[], [], []];
 
-  const el = document.getElementById('sandbox-view');
-  el.innerHTML = '';
-
-  // reuse challenge view inside sandbox
   renderCircuitUI(ch, []);
-
-  // move challenge-view content into sandbox-view
-  el.innerHTML = document.getElementById('challenge-view').innerHTML;
-  document.getElementById('challenge-view').innerHTML = '';
-
-  // fix back button
-  el.querySelector('.ch-back').onclick = () => showView('tree');
 }
 
 // ════════════════════════════════════════════════════
