@@ -25,6 +25,7 @@ const BLOCK_DEFS = {
   'random-num': { label: '🎯 Losowa liczba:', cls: 'b-math', inputs: [{ key: 'name', placeholder: 'kostka' }, { key: 'min', placeholder: '1' }, { key: 'max', placeholder: '6' }] },
   'group':      { label: '📎 Grupa', cls: 'b-repeat', inputs: [{ key: 'name', placeholder: 'moja grupa' }], isGroup: true },
   'if-else':    { label: '❓ Jeżeli', cls: 'b-repeat', inputs: [], isIfElse: true },
+  'click':      { label: '👆 Czekaj na klik:', cls: 'b-say', inputs: [{ key: 'text', placeholder: '🎲 Rzuć kostką' }] },
   'debug-stop': { label: '⏸ Pauza:', cls: 'b-debug', inputs: [{ key: 'msg', placeholder: 'checkpoint' }] },
   'goto':       { label: '↩ Idź do:', cls: 'b-repeat', inputs: [], isGoto: true },
   'obj-new':    { label: '🏗 Nowy obiekt:', cls: 'b-var', inputs: [{ key: 'name', placeholder: 'gracz' }, { key: 'props', placeholder: 'imię=Zosia, hp=100, atak=15' }] },
@@ -928,6 +929,23 @@ function logAsk(question) {
   });
 }
 
+function logClick(text) {
+  const body = document.getElementById('outputBody');
+  const el = document.createElement('div');
+  el.className = 'output-line click';
+  el.innerHTML = `<div class="output-label">👆 Akcja</div>
+    <button class="click-btn">${escHtml(text)}</button>`;
+  body.prepend(el);
+  const btn = el.querySelector('.click-btn');
+  return new Promise(resolve => {
+    btn.addEventListener('click', () => {
+      btn.remove();
+      el.innerHTML = `<div class="output-label">👆 Akcja</div>${escHtml(text)} ✔`;
+      resolve();
+    });
+  });
+}
+
 function logAI(text) {
   const body = document.getElementById('outputBody');
   const el = document.createElement('div');
@@ -1098,6 +1116,15 @@ async function executeBlocks(blks, startIdx) {
         log(`${answer}`, 'ask-answer');
         clog(`  ✏️ ${varName} = "${answer}"`);
         updateVarsPanel();
+        break;
+      }
+
+      case 'click': {
+        const text = interpolateVars(vals.text || '👆 Kliknij');
+        clog(`  👆 czekam na klik: "${text}"`);
+        switchTab('output');
+        await logClick(text);
+        clog(`  ✔ kliknięto`);
         break;
       }
 
