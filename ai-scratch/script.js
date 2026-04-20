@@ -383,6 +383,7 @@ document.querySelectorAll('.block-template').forEach(el => {
     e.dataTransfer.setData('block-type', el.dataset.type);
     e.dataTransfer.effectAllowed = 'copy';
   });
+  el.addEventListener('click', () => addBlock(el.dataset.type));
 });
 
 function onDragOver(e) {
