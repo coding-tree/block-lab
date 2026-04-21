@@ -397,7 +397,7 @@ const TOPICS = [
   { id: 'gate-xor', title: 'Bramka XOR', icon: '🟠', desc: 'Rozne = 1, takie same = 0', track: 'blue', requires: ['gate-or'],
     challenges: [
       { title: 'Odkryj XOR', goal: 'Lampka swieci gdy wejscia sa ROZNE.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['XOR'], targetFn: (v) => (v.A !== v.B) ? 1 : 0, hint: 'XOR = rozne wartosci' },
-      { title: 'Zbuduj XOR', goal: 'Zbuduj XOR uzywajac tylko AND, OR i NOT!', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['AND','OR','NOT','NOT'], targetFn: (v) => (v.A !== v.B) ? 1 : 0, maxGates: 4, hint: 'XOR = (A OR B) AND NOT(A AND B)' },
+      { title: 'Zbuduj XOR', goal: 'Zbuduj XOR uzywajac tylko AND, OR i NOT!', type: 'circuit', inputs: ['A','B'], layers: 3, availableGates: ['AND','AND','OR','NOT'], targetFn: (v) => (v.A !== v.B) ? 1 : 0, maxGates: 4, hint: 'XOR = (A OR B) AND NOT(A AND B)' },
     ]
   },
   { id: 'gate-combine', title: 'Laczenie bramek', icon: '🔗', desc: 'Buduj zlożone uklady', track: 'blue', requires: ['gate-xor'],
