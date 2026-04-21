@@ -385,13 +385,13 @@ const TOPICS = [
     challenges: [
       { title: 'Odkryj AND', goal: 'Lampka ma sie zapalic TYLKO gdy oba przelaczniki sa ON.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['AND'], targetFn: (v) => (v.A && v.B) ? 1 : 0, hint: 'AND = oba musza byc 1' },
       { title: 'Testuj AND', goal: 'Przetestuj wszystkie kombinacje A i B. Kiedy lampka swieci?', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['AND'], targetFn: (v) => (v.A && v.B) ? 1 : 0, hint: 'Tylko gdy A=1 I B=1' },
-      { title: '3 wejscia AND', goal: 'Lampka swieci gdy A, B i C sa wszystkie ON.', type: 'circuit', inputs: ['A','B','C'], layers: 1, availableGates: ['AND','AND'], targetFn: (v) => (v.A && v.B && v.C) ? 1 : 0, hint: 'Uzyj dwoch bramek AND' },
+      { title: '3 wejscia AND', goal: 'Lampka swieci gdy A, B i C sa wszystkie ON.', type: 'circuit', inputs: ['A','B','C'], layers: 2, availableGates: ['AND','AND'], targetFn: (v) => (v.A && v.B && v.C) ? 1 : 0, hint: 'Uzyj dwoch bramek AND' },
     ]
   },
   { id: 'gate-or', title: 'Bramka OR', icon: '🟢', desc: 'Wystarczy JEDEN na 1', track: 'blue', requires: ['gate-not', 'gate-and'],
     challenges: [
       { title: 'Odkryj OR', goal: 'Lampka zaswieczy gdy KTORYKOLWIEK przelacznik jest ON.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['OR'], targetFn: (v) => (v.A || v.B) ? 1 : 0, hint: 'OR = wystarczy jeden' },
-      { title: 'Alarm drzwi', goal: 'Alarm (lampka) gdy KTORES drzwi sa otwarte. 3 drzwi!', type: 'circuit', inputs: ['A','B','C'], layers: 1, availableGates: ['OR','OR'], targetFn: (v) => (v.A || v.B || v.C) ? 1 : 0, hint: 'Polacz dwa OR w lancuch' },
+      { title: 'Alarm drzwi', goal: 'Alarm (lampka) gdy KTORES drzwi sa otwarte. 3 drzwi!', type: 'circuit', inputs: ['A','B','C'], layers: 2, availableGates: ['OR','OR'], targetFn: (v) => (v.A || v.B || v.C) ? 1 : 0, hint: 'Polacz dwa OR w lancuch' },
     ]
   },
   { id: 'gate-xor', title: 'Bramka XOR', icon: '🟠', desc: 'Rozne = 1, takie same = 0', track: 'blue', requires: ['gate-or'],
@@ -849,8 +849,8 @@ function renderCircuitUI(ch, available) {
       const def = GATE_DEFS[gate.type];
       const val = gate._output;
       const wireLabels = (gate.wires || []).map(w => {
-        if (li === 0) return circuitInputs[w] || '?';
-        return `L${li}[${w}]`;
+        if (w.layer === -1) return circuitInputs[w.idx] || '?';
+        return `L${w.layer + 1}[${w.idx}]`;
       }).join(', ') || 'brak';
 
       gatesHtml += `<div class="gate-box ${def.cls}">
@@ -964,17 +964,16 @@ function openWirePopup(layerIdx, gateIdx, ev) {
   const gate = circuitLayers[layerIdx][gateIdx];
   const def = GATE_DEFS[gate.type];
 
-  // available sources
-  let sources = [];
-  if (layerIdx === 0) {
-    sources = circuitInputs.map((name, i) => ({ idx: i, label: name }));
-  } else {
-    sources = circuitLayers[layerIdx - 1].map((g, i) => ({ idx: i, label: `${GATE_DEFS[g.type].label}[${i}]` }));
+  // available sources: inputs + gates in any prior layer
+  const sources = circuitInputs.map((name, i) => ({ layer: -1, idx: i, label: name }));
+  for (let L = 0; L < layerIdx; L++) {
+    circuitLayers[L].forEach((g, i) =>
+      sources.push({ layer: L, idx: i, label: `${GATE_DEFS[g.type].label}[${i}]` }));
   }
 
   let html = sources.map(s => {
-    const checked = (gate.wires || []).includes(s.idx);
-    return `<label><input type="checkbox" ${checked?'checked':''} onchange="toggleWire(${layerIdx},${gateIdx},${s.idx},this.checked)"> ${s.label}</label>`;
+    const checked = (gate.wires || []).some(w => w.layer === s.layer && w.idx === s.idx);
+    return `<label><input type="checkbox" ${checked?'checked':''} onchange="toggleWire(${layerIdx},${gateIdx},${s.layer},${s.idx},this.checked)"> ${s.label}</label>`;
   }).join('');
 
   const popup = document.createElement('div');
@@ -989,14 +988,14 @@ function openWirePopup(layerIdx, gateIdx, ev) {
   setTimeout(() => document.addEventListener('click', close), 0);
 }
 
-function toggleWire(layerIdx, gateIdx, sourceIdx, on) {
+function toggleWire(layerIdx, gateIdx, srcLayer, srcIdx, on) {
   const gate = circuitLayers[layerIdx][gateIdx];
   if (!gate.wires) gate.wires = [];
   const def = GATE_DEFS[gate.type];
   if (on) {
-    if (gate.wires.length < def.inputs) gate.wires.push(sourceIdx);
+    if (gate.wires.length < def.inputs) gate.wires.push({ layer: srcLayer, idx: srcIdx });
   } else {
-    gate.wires = gate.wires.filter(w => w !== sourceIdx);
+    gate.wires = gate.wires.filter(w => !(w.layer === srcLayer && w.idx === srcIdx));
   }
   document.querySelectorAll('.wire-popup').forEach(p => p.remove());
   renderCircuitUI(window._curCh, window._curAvail);
@@ -1006,15 +1005,11 @@ function evaluateCircuit() {
   circuitLayers.forEach((layer, li) => {
     layer.forEach(gate => {
       const def = GATE_DEFS[gate.type];
-      let inputVals = [];
-      if (li === 0) {
-        inputVals = (gate.wires || []).map(w => circuitValues[circuitInputs[w]] || 0);
-      } else {
-        inputVals = (gate.wires || []).map(w => {
-          const prev = circuitLayers[li-1][w];
-          return prev ? (prev._output || 0) : 0;
-        });
-      }
+      const inputVals = (gate.wires || []).map(w => {
+        if (w.layer === -1) return circuitValues[circuitInputs[w.idx]] || 0;
+        const src = circuitLayers[w.layer] && circuitLayers[w.layer][w.idx];
+        return src ? (src._output || 0) : 0;
+      });
       // pad missing inputs with 0
       while (inputVals.length < def.inputs) inputVals.push(0);
       gate._output = def.fn(inputVals);
