@@ -288,6 +288,25 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .truth-table td.match { background: #00ff8812; }
 .truth-table td.mismatch { background: #ff446612; }
 
+/* ── Gate truth table (expandable) ── */
+.gate-chevron {
+  display: block; margin: 4px auto 0;
+  background: none; border: 1px solid var(--border);
+  color: var(--muted); font-family: var(--font);
+  font-size: 10px; padding: 1px 10px; border-radius: 4px;
+  cursor: pointer; transition: color .15s, border-color .15s;
+}
+.gate-chevron:hover { color: var(--text); border-color: var(--border2); }
+.gate-truth {
+  margin: 8px auto 2px; border-collapse: collapse;
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+}
+.gate-truth th, .gate-truth td {
+  padding: 2px 7px; border: 1px solid var(--border); text-align: center;
+}
+.gate-truth th { font-size: 9px; text-transform: uppercase; background: var(--bg3); color: var(--muted); }
+.gate-truth tr.active td { background: #ffd93d22; color: var(--yellow); font-weight: 700; }
+
 /* ── WIRES (SVG layer) ── */
 .circuit { position: relative; }
 .wire-layer {
@@ -1037,6 +1056,42 @@ function refreshCircuit() {
   if (window._curCh) renderCircuitUI(window._curCh, window._curAvail, window._curOpts);
 }
 
+function toggleGateExpand(layer, idx) {
+  const gate = circuitLayers[layer] && circuitLayers[layer][idx];
+  if (!gate) return;
+  gate._expanded = !gate._expanded;
+  refreshCircuit();
+}
+
+function gateTruthTableHtml(gate, def) {
+  const n = def.inputs;
+  const combos = [];
+  for (let i = 0; i < (1 << n); i++) {
+    const row = [];
+    for (let b = 0; b < n; b++) row.push((i >> (n - 1 - b)) & 1);
+    combos.push(row);
+  }
+  // current values at each input port (null when port is unwired)
+  const cur = [];
+  for (let p = 0; p < n; p++) {
+    const w = gate.wires && gate.wires[p];
+    if (!w) { cur.push(null); continue; }
+    if (w.layer === -1) cur.push(circuitValues[circuitInputs[w.idx]] || 0);
+    else {
+      const src = circuitLayers[w.layer] && circuitLayers[w.layer][w.idx];
+      cur.push(src ? (src._output || 0) : 0);
+    }
+  }
+  const headers = (n === 1 ? ['A','→'] : ['A','B','→']);
+  const rows = combos.map(c => {
+    const out = def.fn(c);
+    const active = cur.every((v, i) => v !== null && v === c[i]);
+    const cells = c.map(v => `<td>${v}</td>`).join('') + `<td>${out}</td>`;
+    return `<tr class="${active?'active':''}">${cells}</tr>`;
+  }).join('');
+  return `<table class="gate-truth"><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>${rows}</table>`;
+}
+
 // global ESC to cancel arming
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelArm(); });
 
@@ -1182,10 +1237,16 @@ function renderCircuitUI(ch, available, opts) {
       // output port
       portsHtml += `<div id="port-out-gate-${li}-${gi}" class="port port-out${isArmedSrc?' armed':''}" onclick="event.stopPropagation(); armPort('gate',${li},${gi});"></div>`;
 
+      const expanded = !!gate._expanded;
+      const truthHtml = expanded ? gateTruthTableHtml(gate, def) : '';
+      const chevronHtml = `<button class="gate-chevron" onclick="event.stopPropagation(); toggleGateExpand(${li},${gi});">${expanded?'⌃ schowaj':'⌄ tabelka'}</button>`;
+
       gatesHtml += `<div class="gate-box ${def.cls}" data-inputs="${def.inputs}">
         ${hideRemove ? '' : `<button class="gate-rm" onclick="circuitLayers[${li}].splice(${gi},1);pruneWires();refreshCircuit();">✕</button>`}
         <div class="gate-label">${def.icon} ${def.label}</div>
         <div class="gate-output ${val?'gate-output-on':'gate-output-off'}">${val}</div>
+        ${truthHtml}
+        ${chevronHtml}
         ${portsHtml}
       </div>`;
     });
