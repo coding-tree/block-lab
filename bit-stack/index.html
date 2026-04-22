@@ -376,6 +376,9 @@ const TOPICS = [
   // Logic Gates
   { id: 'gate-not', title: 'Bramka NOT', icon: '🔴', desc: 'Odwraca sygnal — 1 staje sie 0', track: 'blue', requires: ['binary-convert'],
     challenges: [
+      { title: 'Zobacz NOT', goal: 'Przewiduj co pokaze lampka dla kazdej wartosci A.', type: 'predict', inputs: ['A'],
+        preset: { layers: [[{type:'NOT', wires:[{layer:-1,idx:0}]}]] },
+        hint: 'NOT odwraca: 1→0, 0→1' },
       { title: 'Odkryj NOT', goal: 'Polacz wejscie A z bramka NOT. Co sie stanie?', type: 'circuit', inputs: ['A'], layers: 1, availableGates: ['NOT'], targetFn: (v) => v.A ? 0 : 1, hint: 'NOT odwraca — gdy A=1, wyjscie=0' },
       { title: 'NOT z 0', goal: 'Ustaw A=0 i przepusc przez NOT. Jaki wynik?', type: 'circuit', inputs: ['A'], layers: 1, availableGates: ['NOT'], targetFn: (v) => v.A ? 0 : 1, startValues: {A:0}, hint: 'NOT zamienia 0 na 1' },
       { title: 'Podwojny NOT', goal: 'Uzyj dwoch bramek NOT jedna po drugiej. Co dostaniesz?', type: 'circuit', inputs: ['A'], layers: 2, availableGates: ['NOT','NOT'], targetFn: (v) => v.A, hint: 'NOT(NOT(x)) = x — wraca do oryginalu!' },
@@ -383,6 +386,9 @@ const TOPICS = [
   },
   { id: 'gate-and', title: 'Bramka AND', icon: '🔵', desc: 'OBA musza byc 1', track: 'blue', requires: ['binary-convert'],
     challenges: [
+      { title: 'Zobacz AND', goal: 'Przewiduj wyjscie bramki AND dla kazdej kombinacji.', type: 'predict', inputs: ['A','B'],
+        preset: { layers: [[{type:'AND', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}]] },
+        hint: 'AND = 1 tylko gdy oba sa 1' },
       { title: 'Odkryj AND', goal: 'Lampka ma sie zapalic TYLKO gdy oba przelaczniki sa ON.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['AND'], targetFn: (v) => (v.A && v.B) ? 1 : 0, hint: 'AND = oba musza byc 1' },
       { title: 'Testuj AND', goal: 'Przetestuj wszystkie kombinacje A i B. Kiedy lampka swieci?', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['AND'], targetFn: (v) => (v.A && v.B) ? 1 : 0, hint: 'Tylko gdy A=1 I B=1' },
       { title: '3 wejscia AND', goal: 'Lampka swieci gdy A, B i C sa wszystkie ON.', type: 'circuit', inputs: ['A','B','C'], layers: 2, availableGates: ['AND','AND'], targetFn: (v) => (v.A && v.B && v.C) ? 1 : 0, hint: 'Uzyj dwoch bramek AND' },
@@ -390,20 +396,116 @@ const TOPICS = [
   },
   { id: 'gate-or', title: 'Bramka OR', icon: '🟢', desc: 'Wystarczy JEDEN na 1', track: 'blue', requires: ['gate-not', 'gate-and'],
     challenges: [
+      { title: 'Zobacz OR', goal: 'Przewiduj wyjscie bramki OR dla kazdej kombinacji.', type: 'predict', inputs: ['A','B'],
+        preset: { layers: [[{type:'OR', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}]] },
+        hint: 'OR = 1 gdy przynajmniej jeden jest 1' },
       { title: 'Odkryj OR', goal: 'Lampka zaswieczy gdy KTORYKOLWIEK przelacznik jest ON.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['OR'], targetFn: (v) => (v.A || v.B) ? 1 : 0, hint: 'OR = wystarczy jeden' },
       { title: 'Alarm drzwi', goal: 'Alarm (lampka) gdy KTORES drzwi sa otwarte. 3 drzwi!', type: 'circuit', inputs: ['A','B','C'], layers: 2, availableGates: ['OR','OR'], targetFn: (v) => (v.A || v.B || v.C) ? 1 : 0, hint: 'Polacz dwa OR w lancuch' },
     ]
   },
   { id: 'gate-xor', title: 'Bramka XOR', icon: '🟠', desc: 'Rozne = 1, takie same = 0', track: 'blue', requires: ['gate-or'],
     challenges: [
+      { title: 'Zobacz XOR', goal: 'Przewiduj wyjscie XOR — kiedy swieci?', type: 'predict', inputs: ['A','B'],
+        preset: { layers: [[{type:'XOR', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}]] },
+        hint: 'XOR = 1 gdy wartosci sa rozne' },
       { title: 'Odkryj XOR', goal: 'Lampka swieci gdy wejscia sa ROZNE.', type: 'circuit', inputs: ['A','B'], layers: 1, availableGates: ['XOR'], targetFn: (v) => (v.A !== v.B) ? 1 : 0, hint: 'XOR = rozne wartosci' },
-      { title: 'Zbuduj XOR', goal: 'Zbuduj XOR uzywajac tylko AND, OR i NOT!', type: 'circuit', inputs: ['A','B'], layers: 3, availableGates: ['AND','AND','OR','NOT'], targetFn: (v) => (v.A !== v.B) ? 1 : 0, maxGates: 4, hint: 'XOR = (A OR B) AND NOT(A AND B)' },
     ]
   },
-  { id: 'gate-combine', title: 'Laczenie bramek', icon: '🔗', desc: 'Buduj zlożone uklady', track: 'blue', requires: ['gate-xor'],
+  // ── Composition scaffolding ─────────────────────────
+  { id: 'compose-series', title: 'Szeregowo', icon: '⛓️', desc: 'Wyjscie jednej bramki wpada do drugiej', track: 'blue', requires: ['gate-xor'],
+    challenges: [
+      { title: 'Podwojny NOT', goal: 'Co sie stanie gdy A przejdzie przez dwa NOT-y z rzedu?', type: 'predict', inputs: ['A'],
+        preset: { layers: [
+          [{type:'NOT', wires:[{layer:-1,idx:0}]}],
+          [{type:'NOT', wires:[{layer:0,idx:0}]}]
+        ]},
+        hint: 'NOT odwraca, drugi NOT odwraca z powrotem' },
+      { title: 'NAND szeregowo', goal: 'AND, potem NOT. Co dostaniemy?', type: 'predict', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'AND', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}],
+          [{type:'NOT', wires:[{layer:0,idx:0}]}]
+        ]},
+        hint: 'NOT(A AND B) — przeciwienstwo AND' },
+      { title: 'Polacz NOR', goal: 'Polacz bramki tak, zeby uzyskac NOT(A OR B).', type: 'wire', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'OR'}],
+          [{type:'NOT'}]
+        ]},
+        targetFn: (v) => (!(v.A||v.B)) ? 1 : 0,
+        hint: 'A i B do OR, wynik OR do NOT' },
+      { title: 'Zbuduj NAND', goal: 'Zbuduj NAND: lampka swieci GDY nie jest prawda ze OBA sa 1.', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['AND','NOT'],
+        targetFn: (v) => (!(v.A&&v.B)) ? 1 : 0, maxGates: 2,
+        hint: 'Najpierw AND, potem NOT' },
+    ]
+  },
+  { id: 'compose-parallel', title: 'Rownolegle', icon: '🔀', desc: 'Dwie galezie laczone razem', track: 'blue', requires: ['compose-series'],
+    challenges: [
+      { title: 'Dwie galezie', goal: 'Kazde wejscie ma swoj NOT, potem AND. Kiedy swieci?', type: 'predict', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'NOT', wires:[{layer:-1,idx:0}]}, {type:'NOT', wires:[{layer:-1,idx:1}]}],
+          [{type:'AND', wires:[{layer:0,idx:0},{layer:0,idx:1}]}]
+        ]},
+        hint: 'AND wymaga obu na 1 — czyli oba NOT-y musza dac 1' },
+      { title: 'Polacz galezie', goal: 'Polacz tak, zeby lampka swiecila tylko gdy OBA sa wylaczone.', type: 'wire', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'NOT'}, {type:'NOT'}],
+          [{type:'AND'}]
+        ]},
+        targetFn: (v) => (!v.A && !v.B) ? 1 : 0,
+        hint: 'A do pierwszego NOT, B do drugiego, oba wyjscia do AND' },
+      { title: 'Co na koncu?', goal: 'Jaka bramka w miejscu ? da 1 gdy OBA wejscia sa wylaczone?', type: 'fill', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'NOT', wires:[{layer:-1,idx:0}]}, {type:'NOT', wires:[{layer:-1,idx:1}]}],
+          [{type:'?', wires:[{layer:0,idx:0},{layer:0,idx:1}]}]
+        ]},
+        options: ['AND','OR','XOR'], answer: 'AND',
+        hint: 'Oba NOT-y musza dac 1 — czyli potrzeba AND' },
+      { title: 'Oba wylaczone', goal: 'Zbuduj od zera uklad: lampka swieci gdy A=0 I B=0.', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['NOT','NOT','AND'],
+        targetFn: (v) => (!v.A && !v.B) ? 1 : 0, maxGates: 3,
+        hint: 'Dwa NOT-y (po jednym na kazde wejscie), potem AND' },
+    ]
+  },
+  { id: 'gate-combine', title: 'Laczenie bramek', icon: '🔗', desc: 'Buduj zlożone uklady', track: 'blue', requires: ['compose-parallel'],
     challenges: [
       { title: 'NOT + AND', goal: 'Lampka swieci gdy A jest ON ale B jest OFF.', type: 'circuit', inputs: ['A','B'], layers: 2, availableGates: ['NOT','AND'], targetFn: (v) => (v.A && !v.B) ? 1 : 0, hint: 'Odwroc B przez NOT, potem AND z A' },
       { title: 'Kontrola dostepu', goal: 'Drzwi otworza sie gdy masz klucz (A=1) ALBO kod (B=1) I alarm jest wylaczony (C=0).', type: 'circuit', inputs: ['A','B','C'], layers: 2, availableGates: ['OR','NOT','AND'], targetFn: (v) => ((v.A || v.B) && !v.C) ? 1 : 0, hint: '(A OR B) AND NOT(C)' },
+      { title: 'Jaka bramka?', goal: 'Co powinno byc w miejscu ? zeby lampka zaswiecila gdy A=0 I B=1?', type: 'fill', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'NOT', wires:[{layer:-1,idx:0}]}],
+          [{type:'?', wires:[{layer:0,idx:0},{layer:-1,idx:1}]}]
+        ]},
+        options: ['AND','OR','XOR'], answer: 'AND',
+        hint: 'Chcemy 1 tylko gdy NOT(A)=1 oraz B=1' },
+    ]
+  },
+  { id: 'build-xor', title: 'Zbuduj XOR', icon: '🏆', desc: 'Finalne wyzwanie: XOR z prostszych bramek', track: 'blue', requires: ['gate-combine'],
+    challenges: [
+      { title: 'Zobacz calosc XOR', goal: 'Oto pelny XOR zbudowany z AND, OR i NOT. Przewiduj wyjscie.', type: 'predict', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'OR', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}, {type:'AND', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}],
+          [{type:'NOT', wires:[{layer:0,idx:1}]}],
+          [{type:'AND', wires:[{layer:0,idx:0},{layer:1,idx:0}]}]
+        ]},
+        hint: '(A OR B) AND NOT(A AND B) — swieci gdy ROZNE' },
+      { title: 'Polacz XOR', goal: 'Bramki sa rozstawione. Polacz je zeby uzyskac XOR.', type: 'wire', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'OR'}, {type:'AND'}],
+          [{type:'NOT'}],
+          [{type:'AND'}]
+        ]},
+        targetFn: (v) => (v.A !== v.B) ? 1 : 0,
+        hint: 'A i B do OR oraz do AND. AND do NOT. OR i NOT do ostatniego AND.' },
+      { title: 'Ktora na koncu?', goal: 'Prawie gotowy XOR. Jaka bramka na koncu laczy OR i NOT?', type: 'fill', inputs: ['A','B'],
+        preset: { layers: [
+          [{type:'OR', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}, {type:'AND', wires:[{layer:-1,idx:0},{layer:-1,idx:1}]}],
+          [{type:'NOT', wires:[{layer:0,idx:1}]}],
+          [{type:'?', wires:[{layer:0,idx:0},{layer:1,idx:0}]}]
+        ]},
+        options: ['AND','OR','XOR'], answer: 'AND',
+        hint: 'Chcemy 1 gdy OR=1 I NOT(AND)=1 — czyli AND' },
+      { title: 'Zbuduj XOR sam', goal: 'Teraz sam! Zbuduj XOR uzywajac tylko AND, OR i NOT.', type: 'circuit', inputs: ['A','B'], layers: 3, availableGates: ['AND','AND','OR','NOT'],
+        targetFn: (v) => (v.A !== v.B) ? 1 : 0, maxGates: 4,
+        hint: 'XOR = (A OR B) AND NOT(A AND B)' },
     ]
   },
   // Logic Laws
@@ -495,7 +597,7 @@ function renderTree() {
 
   const tracks = [
     { label: 'Binary Basics', cls: 'green', ids: ['onoff','binary-count','binary-convert'] },
-    { label: 'Logic Gates', cls: 'blue', ids: ['gate-not','gate-and','gate-or','gate-xor','gate-combine'] },
+    { label: 'Logic Gates', cls: 'blue', ids: ['gate-not','gate-and','gate-or','gate-xor','compose-series','compose-parallel','gate-combine','build-xor'] },
     { label: 'Logic Laws', cls: 'purple', ids: ['truth-tables','demorgan1','demorgan2','demorgan-prove'] },
   ];
 
@@ -583,6 +685,9 @@ function openChallenge(topicId, idx) {
   if (ch.type === 'quiz') { renderQuizChallenge(ch); return; }
   if (ch.type === 'truth-table-fill') { renderTruthTableFill(ch); return; }
   if (ch.type === 'truth-table-compare') { renderTruthTableCompare(ch); return; }
+  if (ch.type === 'predict') { renderPredictChallenge(ch); return; }
+  if (ch.type === 'wire') { renderWireChallenge(ch); return; }
+  if (ch.type === 'fill') { renderFillChallenge(ch); return; }
   if (ch.type === 'circuit' || ch.type === 'multi-input' || ch.type === 'sandbox') { renderCircuitChallenge(ch); return; }
 }
 
@@ -828,13 +933,18 @@ function renderCircuitChallenge(ch) {
   showView('challenge');
 }
 
-function renderCircuitUI(ch, available) {
+function renderCircuitUI(ch, available, opts) {
+  opts = opts || {};
+  const hidePalette = !!opts.hidePalette;
+  const hideRemove = !!opts.hideRemove;
+  const hideDrop = !!opts.hideDrop;
+  const lockInputs = !!opts.lockInputs;
   const el = document.getElementById(ch.type === 'sandbox' ? 'sandbox-view' : 'challenge-view');
   evaluateCircuit();
 
   // inputs column
   let inputsHtml = circuitInputs.map((name, i) =>
-    `<div class="input-switch ${circuitValues[name]?'on':''}" onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;renderCircuitUI(window._curCh, window._curAvail);">
+    `<div class="input-switch ${circuitValues[name]?'on':''}" ${lockInputs ? 'style="cursor:default;opacity:.85;"' : `onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;renderCircuitUI(window._curCh, window._curAvail, window._curOpts);"`}>
       <div class="sw-label">${name}</div>
       <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
       <div class="sw-val">${circuitValues[name]}</div>
@@ -847,6 +957,7 @@ function renderCircuitUI(ch, available) {
     let gatesHtml = '';
     layer.forEach((gate, gi) => {
       const def = GATE_DEFS[gate.type];
+      if (!def) return; // skip unknown types (e.g. '?' slots — handled by renderFillChallenge)
       const val = gate._output;
       const wireLabels = (gate.wires || []).map(w => {
         if (w.layer === -1) return circuitInputs[w.idx] || '?';
@@ -854,7 +965,7 @@ function renderCircuitUI(ch, available) {
       }).join(', ') || 'brak';
 
       gatesHtml += `<div class="gate-box ${def.cls}">
-        <button class="gate-rm" onclick="circuitLayers[${li}].splice(${gi},1);renderCircuitUI(window._curCh,window._curAvail);">✕</button>
+        ${hideRemove ? '' : `<button class="gate-rm" onclick="circuitLayers[${li}].splice(${gi},1);renderCircuitUI(window._curCh,window._curAvail,window._curOpts);">✕</button>`}
         <div class="gate-label">${def.icon} ${def.label}</div>
         <div class="gate-inputs">← ${wireLabels}</div>
         <div class="gate-output ${val?'gate-output-on':'gate-output-off'}">${val}</div>
@@ -862,10 +973,12 @@ function renderCircuitUI(ch, available) {
       </div>`;
     });
 
-    gatesHtml += `<div class="gate-drop" data-layer="${li}"
-      ondragover="event.preventDefault();this.classList.add('drag-over')"
-      ondragleave="this.classList.remove('drag-over')"
-      ondrop="onGateDrop(event,${li})">+ dodaj bramke</div>`;
+    if (!hideDrop) {
+      gatesHtml += `<div class="gate-drop" data-layer="${li}"
+        ondragover="event.preventDefault();this.classList.add('drag-over')"
+        ondragleave="this.classList.remove('drag-over')"
+        ondrop="onGateDrop(event,${li})">+ dodaj bramke</div>`;
+    }
 
     layersHtml += `<div class="circuit-arrow">→</div>
       <div class="circuit-col">
@@ -915,24 +1028,25 @@ function renderCircuitUI(ch, available) {
           <div class="circuit-col-body">${outputHtml}</div>
         </div>`}
       </div>
-      ${isMultiInput ? '' : `<div class="gate-palette">${paletteHtml}</div>`}
+      ${isMultiInput || hidePalette ? '' : `<div class="gate-palette">${paletteHtml}</div>`}
     </div>
     <div class="challenge-controls">
       <button class="btn btn-check" onclick="checkCircuitChallenge()">Sprawdz ✓</button>
-      <button class="btn btn-reset" onclick="circuitLayers.forEach(l=>l.length=0);renderCircuitUI(window._curCh,window._curAvail);">🗑 Reset</button>
+      ${hideDrop ? '' : `<button class="btn btn-reset" onclick="circuitLayers.forEach(l=>l.length=0);renderCircuitUI(window._curCh,window._curAvail,window._curOpts);">🗑 Reset</button>`}
       <button class="btn btn-hint" onclick="alert(window._curCh.hint||'')">💡 Podpowiedz</button>
       <div class="challenge-msg" id="ch-msg"></div>
     </div>`;
 
   window._curCh = ch;
   window._curAvail = available;
+  window._curOpts = opts;
 }
 
 function addGateToFirstEmpty(type) {
   for (let i = 0; i < circuitLayers.length; i++) {
     if (circuitLayers[i].length < 4) {
       circuitLayers[i].push({ type, wires: [] });
-      renderCircuitUI(window._curCh, window._curAvail);
+      renderCircuitUI(window._curCh, window._curAvail, window._curOpts);
       return;
     }
   }
@@ -953,7 +1067,7 @@ function onGateDrop(ev, layerIdx) {
   }
 
   circuitLayers[layerIdx].push({ type, wires: [] });
-  renderCircuitUI(window._curCh, window._curAvail);
+  renderCircuitUI(window._curCh, window._curAvail, window._curOpts);
 }
 
 function openWirePopup(layerIdx, gateIdx, ev) {
@@ -967,8 +1081,10 @@ function openWirePopup(layerIdx, gateIdx, ev) {
   // available sources: inputs + gates in any prior layer
   const sources = circuitInputs.map((name, i) => ({ layer: -1, idx: i, label: name }));
   for (let L = 0; L < layerIdx; L++) {
-    circuitLayers[L].forEach((g, i) =>
-      sources.push({ layer: L, idx: i, label: `${GATE_DEFS[g.type].label}[${i}]` }));
+    circuitLayers[L].forEach((g, i) => {
+      const d = GATE_DEFS[g.type];
+      sources.push({ layer: L, idx: i, label: `${d ? d.label : '?'}[${i}]` });
+    });
   }
 
   let html = sources.map(s => {
@@ -992,19 +1108,21 @@ function toggleWire(layerIdx, gateIdx, srcLayer, srcIdx, on) {
   const gate = circuitLayers[layerIdx][gateIdx];
   if (!gate.wires) gate.wires = [];
   const def = GATE_DEFS[gate.type];
+  const maxInputs = def ? def.inputs : 2;
   if (on) {
-    if (gate.wires.length < def.inputs) gate.wires.push({ layer: srcLayer, idx: srcIdx });
+    if (gate.wires.length < maxInputs) gate.wires.push({ layer: srcLayer, idx: srcIdx });
   } else {
     gate.wires = gate.wires.filter(w => !(w.layer === srcLayer && w.idx === srcIdx));
   }
   document.querySelectorAll('.wire-popup').forEach(p => p.remove());
-  renderCircuitUI(window._curCh, window._curAvail);
+  renderCircuitUI(window._curCh, window._curAvail, window._curOpts);
 }
 
 function evaluateCircuit() {
   circuitLayers.forEach((layer, li) => {
     layer.forEach(gate => {
       const def = GATE_DEFS[gate.type];
+      if (!def) { gate._output = 0; return; } // unknown type (e.g. '?' slot)
       const inputVals = (gate.wires || []).map(w => {
         if (w.layer === -1) return circuitValues[circuitInputs[w.idx]] || 0;
         const src = circuitLayers[w.layer] && circuitLayers[w.layer][w.idx];
@@ -1079,10 +1197,285 @@ function checkCircuitChallenge() {
     } else {
       document.getElementById('ch-msg').className = 'challenge-msg fail';
       document.getElementById('ch-msg').textContent = 'Nie dla wszystkich kombinacji — sprawdz polaczenia!';
-      renderCircuitUI(ch, window._curAvail);
+      renderCircuitUI(ch, window._curAvail, window._curOpts);
     }
     return;
   }
+}
+
+// ════════════════════════════════════════════════════
+//  PRESET LOADER
+// ════════════════════════════════════════════════════
+function loadPreset(preset) {
+  circuitLayers = (preset && preset.layers ? preset.layers : []).map(layer =>
+    layer.map(g => ({ type: g.type, wires: (g.wires || []).map(w => ({...w})) }))
+  );
+  if (circuitLayers.length === 0) circuitLayers = [[]];
+}
+
+// ════════════════════════════════════════════════════
+//  WIRE CHALLENGE (gates pre-placed, kid only wires)
+// ════════════════════════════════════════════════════
+function renderWireChallenge(ch) {
+  const inputs = ch.inputs || ['A','B'];
+  circuitInputs = inputs;
+  circuitValues = {};
+  inputs.forEach(name => circuitValues[name] = ch.startValues ? (ch.startValues[name] || 0) : 0);
+  loadPreset(ch.preset);
+  showView('challenge');
+  renderCircuitUI(ch, [], { hidePalette: true, hideRemove: true, hideDrop: true });
+}
+
+// ════════════════════════════════════════════════════
+//  PREDICT CHALLENGE (read the circuit, fill truth table)
+// ════════════════════════════════════════════════════
+function renderPredictChallenge(ch) {
+  const inputs = ch.inputs || ['A','B'];
+  circuitInputs = inputs;
+  circuitValues = {};
+  inputs.forEach(name => circuitValues[name] = 0);
+  loadPreset(ch.preset);
+
+  const numCombos = 1 << inputs.length;
+  const answers = new Array(numCombos).fill(null);
+
+  function render() {
+    const el = document.getElementById('challenge-view');
+    evaluateCircuit();
+
+    let inputsHtml = inputs.map(name =>
+      `<div class="input-switch ${circuitValues[name]?'on':''}" onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;window._predictRender();">
+        <div class="sw-label">${name}</div>
+        <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
+        <div class="sw-val">${circuitValues[name]}</div>
+      </div>`
+    ).join('');
+
+    let layersHtml = '';
+    circuitLayers.forEach((layer, li) => {
+      let gatesHtml = '';
+      layer.forEach(gate => {
+        const def = GATE_DEFS[gate.type];
+        if (!def) return;
+        const val = gate._output;
+        gatesHtml += `<div class="gate-box ${def.cls}">
+          <div class="gate-label">${def.icon} ${def.label}</div>
+          <div class="gate-output ${val?'gate-output-on':'gate-output-off'}">${val}</div>
+        </div>`;
+      });
+      layersHtml += `<div class="circuit-arrow">→</div>
+        <div class="circuit-col">
+          <div class="circuit-col-header">Warstwa ${li+1}</div>
+          <div class="circuit-col-body">${gatesHtml}</div>
+        </div>`;
+    });
+
+    const finalOutput = getFinalOutput();
+    let outputHtml = `<div class="output-bulb ${finalOutput?'on':''}">
+      <div class="bulb-icon">${finalOutput?'💡':'⚫'}</div>
+      <div class="bulb-val">${finalOutput}</div>
+    </div>`;
+
+    const header = inputs.map(n => `<th>${n}</th>`).join('') + '<th>wynik</th>';
+    let rows = '';
+    for (let i = 0; i < numCombos; i++) {
+      const combo = [];
+      for (let b = 0; b < inputs.length; b++) combo.push((i >> (inputs.length - 1 - b)) & 1);
+      const cells = combo.map(v => `<td class="${v?'on':'off'}">${v}</td>`).join('');
+      const a = answers[i];
+      const btnVal = a === null ? '?' : a;
+      rows += `<tr>${cells}<td><button class="btn btn-reset" style="min-width:44px;padding:4px 12px;" onclick="window._predictToggle(${i})">${btnVal}</button></td></tr>`;
+    }
+
+    el.innerHTML = `
+      <div class="challenge-header">
+        <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+        <div class="ch-title">${ch.title}</div>
+        <div class="ch-goal">${ch.goal}</div>
+      </div>
+      <div class="challenge-body" style="flex-direction:column;overflow-y:auto;">
+        <div class="circuit" style="flex:0 0 auto;">
+          <div class="circuit-col">
+            <div class="circuit-col-header">Wejscia</div>
+            <div class="circuit-col-body">${inputsHtml}</div>
+          </div>
+          ${layersHtml}
+          <div class="circuit-arrow">→</div>
+          <div class="circuit-col">
+            <div class="circuit-col-header">Wyjscie</div>
+            <div class="circuit-col-body">${outputHtml}</div>
+          </div>
+        </div>
+        <div style="padding:16px 24px;text-align:center;">
+          <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">Pobaw sie przelacznikami, potem wypelnij tabele:</div>
+          <table class="truth-table" style="margin:0 auto;">
+            <tr>${header}</tr>
+            ${rows}
+          </table>
+        </div>
+      </div>
+      <div class="challenge-controls">
+        <button class="btn btn-check" onclick="window._predictCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="alert(window._predictCh.hint||'')">💡 Podpowiedz</button>
+        <div class="challenge-msg" id="ch-msg"></div>
+      </div>`;
+  }
+
+  window._predictCh = ch;
+  window._predictRender = render;
+  window._predictToggle = (i) => {
+    const a = answers[i];
+    if (a === null) answers[i] = 0;
+    else if (a === 0) answers[i] = 1;
+    else answers[i] = null;
+    render();
+  };
+  window._predictCheck = () => {
+    if (answers.some(a => a === null)) {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Wypelnij wszystkie pola!';
+      return;
+    }
+    let allCorrect = true;
+    for (let i = 0; i < numCombos; i++) {
+      const combo = {};
+      inputs.forEach((name, bit) => combo[name] = (i >> (inputs.length - 1 - bit)) & 1);
+      inputs.forEach(name => circuitValues[name] = combo[name]);
+      evaluateCircuit();
+      if (getFinalOutput() !== answers[i]) { allCorrect = false; break; }
+    }
+    inputs.forEach(name => circuitValues[name] = 0);
+    evaluateCircuit();
+    if (allCorrect) showSuccess(3);
+    else {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Cos sie nie zgadza — pobaw sie przelacznikami i sprawdz znowu!';
+      render();
+    }
+  };
+
+  showView('challenge');
+  render();
+}
+
+// ════════════════════════════════════════════════════
+//  FILL CHALLENGE (pick the missing gate)
+// ════════════════════════════════════════════════════
+function renderFillChallenge(ch) {
+  const inputs = ch.inputs || ['A','B'];
+  circuitInputs = inputs;
+  circuitValues = {};
+  inputs.forEach(name => circuitValues[name] = 0);
+  loadPreset(ch.preset);
+
+  let slotLoc = null;
+  circuitLayers.forEach((layer, li) => {
+    layer.forEach((g, gi) => { if (g.type === '?') slotLoc = { li, gi }; });
+  });
+  let picked = null;
+
+  function render() {
+    const el = document.getElementById('challenge-view');
+    evaluateCircuit();
+
+    let inputsHtml = circuitInputs.map(name =>
+      `<div class="input-switch ${circuitValues[name]?'on':''}" onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;window._fillRender();">
+        <div class="sw-label">${name}</div>
+        <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
+        <div class="sw-val">${circuitValues[name]}</div>
+      </div>`
+    ).join('');
+
+    let layersHtml = '';
+    circuitLayers.forEach((layer, li) => {
+      let gatesHtml = '';
+      layer.forEach((gate, gi) => {
+        const isSlot = slotLoc && li === slotLoc.li && gi === slotLoc.gi;
+        const def = GATE_DEFS[gate.type];
+        const val = gate._output;
+        if (isSlot && !def) {
+          gatesHtml += `<div class="gate-box" style="border-style:dashed;border-color:var(--cyan);">
+            <div class="gate-label" style="color:var(--cyan);">❓ ?</div>
+            <div class="gate-output gate-output-off">0</div>
+          </div>`;
+        } else if (def) {
+          gatesHtml += `<div class="gate-box ${def.cls}" ${isSlot?'style="outline:2px solid var(--cyan);"':''}>
+            <div class="gate-label">${def.icon} ${def.label}</div>
+            <div class="gate-output ${val?'gate-output-on':'gate-output-off'}">${val}</div>
+          </div>`;
+        }
+      });
+      layersHtml += `<div class="circuit-arrow">→</div>
+        <div class="circuit-col">
+          <div class="circuit-col-header">Warstwa ${li+1}</div>
+          <div class="circuit-col-body">${gatesHtml}</div>
+        </div>`;
+    });
+
+    const finalOutput = getFinalOutput();
+    let outputHtml = `<div class="output-bulb ${finalOutput?'on':''}">
+      <div class="bulb-icon">${finalOutput?'💡':'⚫'}</div>
+      <div class="bulb-val">${finalOutput}</div>
+    </div>`;
+
+    let pickerHtml = ch.options.map(opt => {
+      const def = GATE_DEFS[opt];
+      return `<div class="gate-pal-item ${def.cls}" onclick="window._fillPick('${opt}')" style="${picked===opt ? 'outline:2px solid var(--cyan);' : ''}">${def.icon} ${def.label}</div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="challenge-header">
+        <button class="ch-back" onclick="openTopic('${currentTopic.id}')">← Powrot</button>
+        <div class="ch-title">${ch.title}</div>
+        <div class="ch-goal">${ch.goal}</div>
+      </div>
+      <div class="challenge-body">
+        <div class="circuit">
+          <div class="circuit-col">
+            <div class="circuit-col-header">Wejscia</div>
+            <div class="circuit-col-body">${inputsHtml}</div>
+          </div>
+          ${layersHtml}
+          <div class="circuit-arrow">→</div>
+          <div class="circuit-col">
+            <div class="circuit-col-header">Wyjscie</div>
+            <div class="circuit-col-body">${outputHtml}</div>
+          </div>
+        </div>
+        <div class="gate-palette">
+          <h3>Wybierz bramke</h3>
+          ${pickerHtml}
+        </div>
+      </div>
+      <div class="challenge-controls">
+        <button class="btn btn-check" onclick="window._fillCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="alert(window._fillCh.hint||'')">💡 Podpowiedz</button>
+        <div class="challenge-msg" id="ch-msg"></div>
+      </div>`;
+  }
+
+  window._fillCh = ch;
+  window._fillRender = render;
+  window._fillPick = (opt) => {
+    picked = opt;
+    if (slotLoc) circuitLayers[slotLoc.li][slotLoc.gi].type = opt;
+    render();
+  };
+  window._fillCheck = () => {
+    if (!picked) {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Wybierz bramke!';
+      return;
+    }
+    if (picked === ch.answer) showSuccess(3);
+    else {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Nie ta bramka — pobaw sie przelacznikami i sprobuj inna.';
+    }
+  };
+
+  showView('challenge');
+  render();
 }
 
 // ════════════════════════════════════════════════════
