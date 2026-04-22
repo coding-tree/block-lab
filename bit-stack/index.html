@@ -288,6 +288,21 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .truth-table td.match { background: #00ff8812; }
 .truth-table td.mismatch { background: #ff446612; }
 
+/* ── WIRES (SVG layer) ── */
+.circuit { position: relative; }
+.wire-layer {
+  position: absolute; top: 0; left: 0;
+  pointer-events: none; overflow: visible;
+}
+.wire-layer .wire {
+  fill: none; stroke: var(--border2); stroke-width: 2;
+  transition: stroke .15s, stroke-width .15s, filter .2s;
+}
+.wire-layer .wire.active {
+  stroke: var(--yellow); stroke-width: 2.5;
+  filter: drop-shadow(0 0 3px #ffd93d88);
+}
+
 /* ── PORTS ── */
 .gate-box, .input-switch, .output-bulb { position: relative; }
 .port {
@@ -1025,6 +1040,60 @@ function refreshCircuit() {
 // global ESC to cancel arming
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelArm(); });
 
+// window resize — redraw wires (debounce not needed, cheap enough)
+window.addEventListener('resize', () => drawWires());
+
+function drawWires() {
+  const svg = document.querySelector('.wire-layer');
+  if (!svg) return;
+  const circuit = svg.parentElement;
+  const svgRect = circuit.getBoundingClientRect();
+  // size svg to the full scrollable area so wires reach ports outside the visible viewport
+  svg.setAttribute('width', circuit.scrollWidth);
+  svg.setAttribute('height', circuit.scrollHeight);
+
+  const sourceValue = (w) => {
+    if (w.layer === -1) return !!circuitValues[circuitInputs[w.idx]];
+    const g = circuitLayers[w.layer] && circuitLayers[w.layer][w.idx];
+    return g ? !!g._output : false;
+  };
+
+  const wires = [];
+  circuitLayers.forEach((layer, li) => {
+    layer.forEach((gate, gi) => {
+      if (!gate.wires) return;
+      gate.wires.forEach((w, p) => {
+        if (!w) return;
+        wires.push({ src: w, tgt: { kind:'gate', layer: li, idx: gi, port: p }, active: sourceValue(w) });
+      });
+    });
+  });
+  if (circuitOutputWire) {
+    wires.push({ src: circuitOutputWire, tgt: { kind:'output' }, active: sourceValue(circuitOutputWire) });
+  }
+
+  const paths = wires.map(({ src, tgt, active }) => {
+    const srcEl = src.layer === -1
+      ? document.getElementById(`port-out-input-${src.idx}`)
+      : document.getElementById(`port-out-gate-${src.layer}-${src.idx}`);
+    const tgtEl = tgt.kind === 'output'
+      ? document.getElementById('port-in-output')
+      : document.getElementById(`port-in-gate-${tgt.layer}-${tgt.idx}-${tgt.port}`);
+    if (!srcEl || !tgtEl) return '';
+    const sr = srcEl.getBoundingClientRect();
+    const tr = tgtEl.getBoundingClientRect();
+    const x1 = sr.left + sr.width/2 - svgRect.left + circuit.scrollLeft;
+    const y1 = sr.top + sr.height/2 - svgRect.top + circuit.scrollTop;
+    const x2 = tr.left + tr.width/2 - svgRect.left + circuit.scrollLeft;
+    const y2 = tr.top + tr.height/2 - svgRect.top + circuit.scrollTop;
+    const dx = Math.max(30, Math.abs(x2 - x1) * 0.5);
+    const d = `M ${x1},${y1} C ${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+    return `<path class="wire${active?' active':''}" d="${d}"></path>`;
+  }).join('');
+
+  svg.innerHTML = paths;
+}
+
 // ════════════════════════════════════════════════════
 //  CIRCUIT CHALLENGE (core builder)
 // ════════════════════════════════════════════════════
@@ -1085,7 +1154,7 @@ function renderCircuitUI(ch, available, opts) {
       <div class="sw-label">${name}</div>
       <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
       <div class="sw-val">${circuitValues[name]}</div>
-      <div class="port port-out${isArmedSrc?' armed':''}" title="Kliknij zeby polaczyc z bramka" onclick="event.stopPropagation(); armPort('input',-1,${i});"></div>
+      <div id="port-out-input-${i}" class="port port-out${isArmedSrc?' armed':''}" title="Kliknij zeby polaczyc z bramka" onclick="event.stopPropagation(); armPort('input',-1,${i});"></div>
     </div>`;
   }).join('');
 
@@ -1108,10 +1177,10 @@ function renderCircuitUI(ch, available, opts) {
         if (armedPort) cls = isValidTarget(target) ? 'valid' : 'invalid';
         else if (occupied) cls = 'occupied';
         const pCls = def.inputs > 1 ? `p${p}` : '';
-        portsHtml += `<div class="port port-in ${pCls} ${cls}" onclick="handlePortClick({kind:'gate',layer:${li},idx:${gi},port:${p}},event)"></div>`;
+        portsHtml += `<div id="port-in-gate-${li}-${gi}-${p}" class="port port-in ${pCls} ${cls}" onclick="handlePortClick({kind:'gate',layer:${li},idx:${gi},port:${p}},event)"></div>`;
       }
       // output port
-      portsHtml += `<div class="port port-out${isArmedSrc?' armed':''}" onclick="event.stopPropagation(); armPort('gate',${li},${gi});"></div>`;
+      portsHtml += `<div id="port-out-gate-${li}-${gi}" class="port port-out${isArmedSrc?' armed':''}" onclick="event.stopPropagation(); armPort('gate',${li},${gi});"></div>`;
 
       gatesHtml += `<div class="gate-box ${def.cls}" data-inputs="${def.inputs}">
         ${hideRemove ? '' : `<button class="gate-rm" onclick="circuitLayers[${li}].splice(${gi},1);pruneWires();refreshCircuit();">✕</button>`}
@@ -1141,7 +1210,7 @@ function renderCircuitUI(ch, available, opts) {
   if (armedPort) outBulbCls = isValidTarget({kind:'output'}) ? 'valid' : 'invalid';
   else if (circuitOutputWire) outBulbCls = 'occupied';
   let outputHtml = `<div class="output-bulb ${finalOutput?'on':''}">
-    <div class="port port-in ${outBulbCls}" onclick="handlePortClick({kind:'output'},event)"></div>
+    <div id="port-in-output" class="port port-in ${outBulbCls}" onclick="handlePortClick({kind:'output'},event)"></div>
     <div class="bulb-icon">${finalOutput?'💡':'⚫'}</div>
     <div class="bulb-val">${finalOutput}</div>
   </div>`;
@@ -1170,6 +1239,7 @@ function renderCircuitUI(ch, available, opts) {
     </div>
     <div class="challenge-body">
       <div class="circuit">
+        <svg class="wire-layer" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="circuit-col">
           <div class="circuit-col-header">Wejscia</div>
           <div class="circuit-col-body">${inputsHtml}</div>
@@ -1193,6 +1263,7 @@ function renderCircuitUI(ch, available, opts) {
   window._curCh = ch;
   window._curAvail = available;
   window._curOpts = opts;
+  drawWires();
 }
 
 function addGateToFirstEmpty(type) {
