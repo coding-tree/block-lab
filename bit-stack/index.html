@@ -288,17 +288,47 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .truth-table td.match { background: #00ff8812; }
 .truth-table td.mismatch { background: #ff446612; }
 
-/* wiring popup */
-.wire-popup {
-  position: absolute; z-index: 50; background: var(--bg2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 10px; min-width: 140px;
-  box-shadow: 0 8px 24px #00000066;
+/* ── PORTS ── */
+.gate-box, .input-switch, .output-bulb { position: relative; }
+.port {
+  position: absolute; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border2); background: var(--bg); cursor: pointer;
+  z-index: 5; transition: transform .12s, box-shadow .15s, background .15s, border-color .15s;
 }
-.wire-popup label {
-  display: flex; align-items: center; gap: 6px; padding: 4px 0;
-  font-size: 12px; cursor: pointer;
+.port:hover { transform: scale(1.25); }
+.port.port-out { right: -8px; top: 50%; transform: translateY(-50%); background: var(--bg3); }
+.port.port-out:hover { transform: translateY(-50%) scale(1.25); }
+.port.port-in { left: -8px; }
+.gate-box[data-inputs="1"] .port.port-in { top: 50%; transform: translateY(-50%); }
+.gate-box[data-inputs="1"] .port.port-in:hover { transform: translateY(-50%) scale(1.25); }
+.gate-box[data-inputs="2"] .port.port-in.p0 { top: 30%; transform: translateY(-50%); }
+.gate-box[data-inputs="2"] .port.port-in.p0:hover { transform: translateY(-50%) scale(1.25); }
+.gate-box[data-inputs="2"] .port.port-in.p1 { top: 70%; transform: translateY(-50%); }
+.gate-box[data-inputs="2"] .port.port-in.p1:hover { transform: translateY(-50%) scale(1.25); }
+.output-bulb .port.port-in { top: 50%; transform: translateY(-50%); }
+.output-bulb .port.port-in:hover { transform: translateY(-50%) scale(1.25); }
+
+.port.occupied { background: var(--yellow); border-color: var(--yellow); }
+.port.armed { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 0 0 var(--cyan); animation: port-pulse 1.2s ease-in-out infinite; }
+.port.valid { border-color: var(--cyan); animation: port-pulse-outline 1.2s ease-in-out infinite; }
+.port.invalid { opacity: .25; pointer-events: none; }
+@keyframes port-pulse { 0%,100% { box-shadow: 0 0 0 0 #00ddff88; } 50% { box-shadow: 0 0 0 8px #00ddff00; } }
+@keyframes port-pulse-outline { 0%,100% { box-shadow: 0 0 0 0 #00ddff88; } 50% { box-shadow: 0 0 0 6px #00ddff00; } }
+
+/* ── WIRE BANNER ── */
+.wire-banner {
+  flex: 0 0 auto; height: 36px;
+  background: var(--bg3); border-bottom: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  color: var(--cyan); font-weight: 600; font-size: 13px;
+  animation: banner-slide .18s ease-out;
 }
-.wire-popup input[type=checkbox] { accent-color: var(--cyan); }
+.wire-banner button {
+  background: none; border: 1px solid var(--border2); color: var(--muted);
+  width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-family: var(--font);
+}
+.wire-banner button:hover { color: var(--red); border-color: var(--red); }
+@keyframes banner-slide { from { transform: translateY(-100%); } to { transform: translateY(0); } }
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 6px; }
@@ -549,8 +579,10 @@ let currentChallengeIdx = 0;
 // circuit state
 let circuitInputs = [];
 let circuitValues = {};
-let circuitLayers = [[], []]; // each layer = array of {type, wires:[inputIndices]}
+let circuitLayers = [[], []]; // each layer = array of {type, wires:[port0,port1]} (nulls allowed)
 let circuitOutputs = [];
+let circuitOutputWire = null; // {layer, idx} — which gate feeds the final bulb
+let armedPort = null;         // {kind:'input'|'gate', layer, idx} while the kid is wiring
 
 function saveProgress() { localStorage.setItem('bitstack-progress', JSON.stringify(progress)); }
 
@@ -914,6 +946,86 @@ function renderTruthTableCompare(ch) {
 }
 
 // ════════════════════════════════════════════════════
+//  PORT WIRING (arm source → click target)
+// ════════════════════════════════════════════════════
+function portsEqual(a, b) {
+  return a && b && a.kind === b.kind && a.layer === b.layer && a.idx === b.idx;
+}
+
+function armPort(kind, layer, idx) {
+  const p = { kind, layer, idx };
+  armedPort = portsEqual(armedPort, p) ? null : p;
+  refreshCircuit();
+}
+
+function cancelArm() {
+  if (!armedPort) return;
+  armedPort = null;
+  refreshCircuit();
+}
+
+function isValidTarget(target) {
+  if (!armedPort) return false;
+  if (target.kind === 'output') return true;
+  if (target.kind === 'gate') {
+    // source layer must be strictly earlier (-1 for input switches covers them)
+    return armedPort.layer < target.layer;
+  }
+  return false;
+}
+
+function connectTarget(target) {
+  if (!armedPort || !isValidTarget(target)) return;
+  const src = { layer: armedPort.layer, idx: armedPort.idx };
+  if (target.kind === 'output') {
+    circuitOutputWire = src;
+  } else {
+    const gate = circuitLayers[target.layer][target.idx];
+    if (!gate.wires) gate.wires = [];
+    while (gate.wires.length <= target.port) gate.wires.push(null);
+    gate.wires[target.port] = src;
+  }
+  armedPort = null;
+  refreshCircuit();
+}
+
+function disconnectTarget(target) {
+  if (target.kind === 'output') {
+    circuitOutputWire = null;
+  } else {
+    const gate = circuitLayers[target.layer][target.idx];
+    if (gate.wires) gate.wires[target.port] = null;
+  }
+  refreshCircuit();
+}
+
+function pruneWires() {
+  // drop any wires pointing at non-existent gates
+  circuitLayers.forEach(layer => {
+    layer.forEach(gate => {
+      if (!gate.wires) return;
+      gate.wires = gate.wires.map(w => {
+        if (!w) return null;
+        if (w.layer === -1) return w.idx < circuitInputs.length ? w : null;
+        const src = circuitLayers[w.layer] && circuitLayers[w.layer][w.idx];
+        return src ? w : null;
+      });
+    });
+  });
+  if (circuitOutputWire) {
+    const s = circuitLayers[circuitOutputWire.layer] && circuitLayers[circuitOutputWire.layer][circuitOutputWire.idx];
+    if (!s) circuitOutputWire = null;
+  }
+}
+
+function refreshCircuit() {
+  if (window._curCh) renderCircuitUI(window._curCh, window._curAvail, window._curOpts);
+}
+
+// global ESC to cancel arming
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelArm(); });
+
+// ════════════════════════════════════════════════════
 //  CIRCUIT CHALLENGE (core builder)
 // ════════════════════════════════════════════════════
 function renderCircuitChallenge(ch) {
@@ -928,9 +1040,26 @@ function renderCircuitChallenge(ch) {
   circuitLayers = [];
   for (let i = 0; i < Math.max(numLayers, 1); i++) circuitLayers.push([]);
   circuitOutputs = [];
+  circuitOutputWire = null;
+  armedPort = null;
 
   renderCircuitUI(ch, available);
   showView('challenge');
+}
+
+function handlePortClick(target, ev) {
+  if (ev) ev.stopPropagation();
+  if (armedPort) {
+    if (isValidTarget(target)) connectTarget(target);
+    return;
+  }
+  // no source armed — clicking an occupied input disconnects it
+  if (target.kind === 'output') {
+    if (circuitOutputWire) disconnectTarget(target);
+    return;
+  }
+  const gate = circuitLayers[target.layer] && circuitLayers[target.layer][target.idx];
+  if (gate && gate.wires && gate.wires[target.port]) disconnectTarget(target);
 }
 
 function renderCircuitUI(ch, available, opts) {
@@ -942,34 +1071,53 @@ function renderCircuitUI(ch, available, opts) {
   const el = document.getElementById(ch.type === 'sandbox' ? 'sandbox-view' : 'challenge-view');
   evaluateCircuit();
 
-  // inputs column
-  let inputsHtml = circuitInputs.map((name, i) =>
-    `<div class="input-switch ${circuitValues[name]?'on':''}" ${lockInputs ? 'style="cursor:default;opacity:.85;"' : `onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;renderCircuitUI(window._curCh, window._curAvail, window._curOpts);"`}>
+  const banner = armedPort
+    ? `<div class="wire-banner">Wybierz wejscie bramki lub lampki zeby polaczyc<button onclick="cancelArm()" title="Anuluj (Esc)">✕</button></div>`
+    : '';
+
+  // inputs column — each switch also has an output port
+  let inputsHtml = circuitInputs.map((name, i) => {
+    const isArmedSrc = armedPort && armedPort.kind === 'input' && armedPort.idx === i;
+    const switchClick = lockInputs
+      ? ''
+      : `onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;refreshCircuit();"`;
+    return `<div class="input-switch ${circuitValues[name]?'on':''}" ${lockInputs ? 'style="cursor:default;opacity:.85;"' : switchClick}>
       <div class="sw-label">${name}</div>
       <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
       <div class="sw-val">${circuitValues[name]}</div>
-    </div>`
-  ).join('');
+      <div class="port port-out${isArmedSrc?' armed':''}" title="Kliknij zeby polaczyc z bramka" onclick="event.stopPropagation(); armPort('input',-1,${i});"></div>
+    </div>`;
+  }).join('');
 
-  // layer columns
+  // layer columns — each gate has ports
   let layersHtml = '';
   circuitLayers.forEach((layer, li) => {
     let gatesHtml = '';
     layer.forEach((gate, gi) => {
       const def = GATE_DEFS[gate.type];
-      if (!def) return; // skip unknown types (e.g. '?' slots — handled by renderFillChallenge)
+      if (!def) return;
       const val = gate._output;
-      const wireLabels = (gate.wires || []).map(w => {
-        if (w.layer === -1) return circuitInputs[w.idx] || '?';
-        return `L${w.layer + 1}[${w.idx}]`;
-      }).join(', ') || 'brak';
+      const isArmedSrc = armedPort && armedPort.kind === 'gate' && armedPort.layer === li && armedPort.idx === gi;
 
-      gatesHtml += `<div class="gate-box ${def.cls}">
-        ${hideRemove ? '' : `<button class="gate-rm" onclick="circuitLayers[${li}].splice(${gi},1);renderCircuitUI(window._curCh,window._curAvail,window._curOpts);">✕</button>`}
+      // input ports
+      let portsHtml = '';
+      for (let p = 0; p < def.inputs; p++) {
+        const occupied = !!(gate.wires && gate.wires[p]);
+        const target = { kind:'gate', layer: li, idx: gi, port: p };
+        let cls = '';
+        if (armedPort) cls = isValidTarget(target) ? 'valid' : 'invalid';
+        else if (occupied) cls = 'occupied';
+        const pCls = def.inputs > 1 ? `p${p}` : '';
+        portsHtml += `<div class="port port-in ${pCls} ${cls}" onclick="handlePortClick({kind:'gate',layer:${li},idx:${gi},port:${p}},event)"></div>`;
+      }
+      // output port
+      portsHtml += `<div class="port port-out${isArmedSrc?' armed':''}" onclick="event.stopPropagation(); armPort('gate',${li},${gi});"></div>`;
+
+      gatesHtml += `<div class="gate-box ${def.cls}" data-inputs="${def.inputs}">
+        ${hideRemove ? '' : `<button class="gate-rm" onclick="circuitLayers[${li}].splice(${gi},1);pruneWires();refreshCircuit();">✕</button>`}
         <div class="gate-label">${def.icon} ${def.label}</div>
-        <div class="gate-inputs">← ${wireLabels}</div>
         <div class="gate-output ${val?'gate-output-on':'gate-output-off'}">${val}</div>
-        <button class="gate-wire-btn" onclick="openWirePopup(${li},${gi},event)">🔌 Polacz</button>
+        ${portsHtml}
       </div>`;
     });
 
@@ -987,9 +1135,13 @@ function renderCircuitUI(ch, available, opts) {
       </div>`;
   });
 
-  // output column
+  // output bulb — has an input port
   const finalOutput = getFinalOutput();
+  let outBulbCls = '';
+  if (armedPort) outBulbCls = isValidTarget({kind:'output'}) ? 'valid' : 'invalid';
+  else if (circuitOutputWire) outBulbCls = 'occupied';
   let outputHtml = `<div class="output-bulb ${finalOutput?'on':''}">
+    <div class="port port-in ${outBulbCls}" onclick="handlePortClick({kind:'output'},event)"></div>
     <div class="bulb-icon">${finalOutput?'💡':'⚫'}</div>
     <div class="bulb-val">${finalOutput}</div>
   </div>`;
@@ -1010,6 +1162,7 @@ function renderCircuitUI(ch, available, opts) {
   const isMultiInput = ch.type === 'multi-input';
 
   el.innerHTML = `
+    ${banner}
     <div class="challenge-header">
       <button class="ch-back" onclick="${ch.type==='sandbox' ? "showView('tree')" : `openTopic('${currentTopic.id}')`}">← Powrot</button>
       <div class="ch-title">${ch.title}</div>
@@ -1032,7 +1185,7 @@ function renderCircuitUI(ch, available, opts) {
     </div>
     <div class="challenge-controls">
       <button class="btn btn-check" onclick="checkCircuitChallenge()">Sprawdz ✓</button>
-      ${hideDrop ? '' : `<button class="btn btn-reset" onclick="circuitLayers.forEach(l=>l.length=0);renderCircuitUI(window._curCh,window._curAvail,window._curOpts);">🗑 Reset</button>`}
+      ${hideDrop ? '' : `<button class="btn btn-reset" onclick="circuitLayers.forEach(l=>l.length=0);circuitOutputWire=null;armedPort=null;refreshCircuit();">🗑 Reset</button>`}
       <button class="btn btn-hint" onclick="alert(window._curCh.hint||'')">💡 Podpowiedz</button>
       <div class="challenge-msg" id="ch-msg"></div>
     </div>`;
@@ -1070,60 +1223,13 @@ function onGateDrop(ev, layerIdx) {
   renderCircuitUI(window._curCh, window._curAvail, window._curOpts);
 }
 
-function openWirePopup(layerIdx, gateIdx, ev) {
-  ev.stopPropagation();
-  // close existing
-  document.querySelectorAll('.wire-popup').forEach(p => p.remove());
-
-  const gate = circuitLayers[layerIdx][gateIdx];
-  const def = GATE_DEFS[gate.type];
-
-  // available sources: inputs + gates in any prior layer
-  const sources = circuitInputs.map((name, i) => ({ layer: -1, idx: i, label: name }));
-  for (let L = 0; L < layerIdx; L++) {
-    circuitLayers[L].forEach((g, i) => {
-      const d = GATE_DEFS[g.type];
-      sources.push({ layer: L, idx: i, label: `${d ? d.label : '?'}[${i}]` });
-    });
-  }
-
-  let html = sources.map(s => {
-    const checked = (gate.wires || []).some(w => w.layer === s.layer && w.idx === s.idx);
-    return `<label><input type="checkbox" ${checked?'checked':''} onchange="toggleWire(${layerIdx},${gateIdx},${s.layer},${s.idx},this.checked)"> ${s.label}</label>`;
-  }).join('');
-
-  const popup = document.createElement('div');
-  popup.className = 'wire-popup';
-  popup.innerHTML = `<div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px;">POLACZ Z:</div>${html}`;
-  popup.style.position = 'fixed';
-  popup.style.left = ev.clientX + 'px';
-  popup.style.top = ev.clientY + 'px';
-  document.body.appendChild(popup);
-
-  const close = (e) => { if (!popup.contains(e.target)) { popup.remove(); document.removeEventListener('click', close); } };
-  setTimeout(() => document.addEventListener('click', close), 0);
-}
-
-function toggleWire(layerIdx, gateIdx, srcLayer, srcIdx, on) {
-  const gate = circuitLayers[layerIdx][gateIdx];
-  if (!gate.wires) gate.wires = [];
-  const def = GATE_DEFS[gate.type];
-  const maxInputs = def ? def.inputs : 2;
-  if (on) {
-    if (gate.wires.length < maxInputs) gate.wires.push({ layer: srcLayer, idx: srcIdx });
-  } else {
-    gate.wires = gate.wires.filter(w => !(w.layer === srcLayer && w.idx === srcIdx));
-  }
-  document.querySelectorAll('.wire-popup').forEach(p => p.remove());
-  renderCircuitUI(window._curCh, window._curAvail, window._curOpts);
-}
-
 function evaluateCircuit() {
   circuitLayers.forEach((layer, li) => {
     layer.forEach(gate => {
       const def = GATE_DEFS[gate.type];
       if (!def) { gate._output = 0; return; } // unknown type (e.g. '?' slot)
       const inputVals = (gate.wires || []).map(w => {
+        if (!w) return 0;
         if (w.layer === -1) return circuitValues[circuitInputs[w.idx]] || 0;
         const src = circuitLayers[w.layer] && circuitLayers[w.layer][w.idx];
         return src ? (src._output || 0) : 0;
@@ -1136,15 +1242,9 @@ function evaluateCircuit() {
 }
 
 function getFinalOutput() {
-  // find last non-empty layer
-  for (let i = circuitLayers.length - 1; i >= 0; i--) {
-    if (circuitLayers[i].length > 0) {
-      return circuitLayers[i][circuitLayers[i].length - 1]._output || 0;
-    }
-  }
-  // no gates — pass through first input
-  if (circuitInputs.length > 0) return circuitValues[circuitInputs[0]] || 0;
-  return 0;
+  if (!circuitOutputWire) return 0;
+  const src = circuitLayers[circuitOutputWire.layer] && circuitLayers[circuitOutputWire.layer][circuitOutputWire.idx];
+  return src ? (src._output || 0) : 0;
 }
 
 function checkCircuitChallenge() {
@@ -1164,6 +1264,12 @@ function checkCircuitChallenge() {
   }
 
   if (ch.targetFn) {
+    // kid-kind nudge: output bulb unwired is the likeliest first mistake
+    if (!circuitOutputWire && ch.type !== 'multi-input') {
+      document.getElementById('ch-msg').className = 'challenge-msg fail';
+      document.getElementById('ch-msg').textContent = 'Polacz bramke z lampka!';
+      return;
+    }
     // test all combinations
     const inputs = ch.inputs || ['A','B'];
     const combos = [];
@@ -1208,9 +1314,22 @@ function checkCircuitChallenge() {
 // ════════════════════════════════════════════════════
 function loadPreset(preset) {
   circuitLayers = (preset && preset.layers ? preset.layers : []).map(layer =>
-    layer.map(g => ({ type: g.type, wires: (g.wires || []).map(w => ({...w})) }))
+    layer.map(g => ({ type: g.type, wires: (g.wires || []).map(w => w ? {...w} : null) }))
   );
   if (circuitLayers.length === 0) circuitLayers = [[]];
+  armedPort = null;
+  // Seed output wire: explicit spec wins, else heuristic (last gate in last non-empty layer).
+  if (preset && preset.outputWire) {
+    circuitOutputWire = { ...preset.outputWire };
+  } else {
+    circuitOutputWire = null;
+    for (let i = circuitLayers.length - 1; i >= 0; i--) {
+      if (circuitLayers[i].length > 0) {
+        circuitOutputWire = { layer: i, idx: circuitLayers[i].length - 1 };
+        break;
+      }
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════
@@ -1498,6 +1617,8 @@ function openSandbox() {
   circuitInputs = ch.inputs;
   circuitValues = { A: 0, B: 0, C: 0 };
   circuitLayers = [[], [], []];
+  circuitOutputWire = null;
+  armedPort = null;
 
   renderCircuitUI(ch, []);
 }
