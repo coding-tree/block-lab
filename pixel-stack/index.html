@@ -78,6 +78,46 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .challenge-item .ci-num { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 24px; }
 .challenge-item .ci-title { flex: 1; font-weight: 600; font-size: 13px; }
 .challenge-item .ci-stars { font-size: 14px; letter-spacing: 1px; }
+
+#challenge-view { flex-direction: column; }
+.ch-topbar {
+  display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+  background: var(--bg2); border-bottom: 1px solid var(--border);
+}
+.ch-topbar .back {
+  padding: 6px 12px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); border-radius: 8px; cursor: pointer; font-family: var(--font);
+}
+.ch-topbar .back:hover { color: var(--text); border-color: var(--border2); }
+.ch-topbar .ch-title { font-weight: 700; flex: 1; }
+.ch-topbar .ch-stars { font-size: 18px; letter-spacing: 2px; }
+.ch-body { flex: 1; display: flex; overflow: hidden; }
+.ch-col { padding: 16px; overflow-y: auto; }
+.palette { width: 220px; border-right: 1px solid var(--border); background: var(--bg2); }
+.ch-main { flex: 1; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.script-area {
+  width: 100%; max-width: 520px; min-height: 160px;
+  background: var(--bg2); border: 1px dashed var(--border); border-radius: var(--r); padding: 12px;
+}
+#scene { background: #000; image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px; }
+.ch-controls { display: flex; gap: 10px; }
+.ch-controls button {
+  padding: 8px 16px; border: 1px solid var(--border2); background: var(--bg3);
+  color: var(--text); border-radius: 8px; cursor: pointer; font-family: var(--font); font-weight: 600;
+}
+.ch-controls button:hover { background: var(--bg4); }
+.ch-side { width: 280px; border-left: 1px solid var(--border); background: var(--bg2); }
+.ch-goal {
+  font-size: 13px; color: var(--muted); line-height: 1.5;
+  margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+}
+.ch-tests div { display: flex; gap: 8px; align-items: center; padding: 6px 0; font-size: 12px; }
+.ch-tests .t-pass { color: var(--green); }
+.ch-tests .t-fail { color: var(--red); }
+.ch-tests .t-pending { color: var(--muted); }
+.ch-msg { margin-top: 12px; font-weight: 600; font-size: 13px; }
+.ch-msg.success { color: var(--green); }
+.ch-msg.fail { color: var(--red); }
 </style>
 </head>
 <body>
@@ -88,7 +128,30 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 </div>
 <div class="main">
   <div id="tree-view" class="view active"><div id="tree-root"></div></div>
-  <div id="challenge-view" class="view">CHALLENGE</div>
+  <div id="challenge-view" class="view">
+    <div class="ch-topbar">
+      <button class="back" onclick="ps.backToStage()">← wyzwania</button>
+      <span class="ch-title" id="ch-title"></span>
+      <span class="ch-stars" id="ch-stars">☆☆☆</span>
+    </div>
+    <div class="ch-body">
+      <aside id="palette" class="ch-col palette"></aside>
+      <section class="ch-col ch-main">
+        <div id="script-area" class="script-area"></div>
+        <canvas id="scene" width="512" height="320"></canvas>
+        <div class="ch-controls">
+          <button id="btn-run">▶ Uruchom</button>
+          <button id="btn-reset">🔄 Reset</button>
+          <button id="btn-check">✓ Sprawdź</button>
+        </div>
+      </section>
+      <aside class="ch-col ch-side">
+        <div id="ch-goal" class="ch-goal"></div>
+        <div id="ch-tests" class="ch-tests"></div>
+        <div id="ch-msg" class="ch-msg"></div>
+      </aside>
+    </div>
+  </div>
   <div id="sandbox-view" class="view">SANDBOX</div>
   <div id="browser-view" class="view"></div>
 </div>
@@ -195,7 +258,27 @@ function openStage(id) {
   });
   showView('browser-view');
 }
-function openChallenge(stageId, idx) { console.log('open', stageId, idx); /* Task 5 */ }
+function openChallenge(stageId, idx) {
+  STATE.stage = stageId;
+  STATE.challenge = idx;
+  const ch = (CHALLENGES[stageId] || [])[idx];
+  if (!ch) { console.warn('no challenge'); return; }
+  document.getElementById('ch-title').textContent = ch.title;
+  const stars = (stageProgress(stageId).stars || [])[idx] || 0;
+  document.getElementById('ch-stars').textContent = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+  document.getElementById('ch-goal').innerHTML = ch.goal || '';
+  document.getElementById('ch-tests').innerHTML = (ch.tests || []).map((t, i) =>
+    `<div class="t-pending" data-i="${i}">○ ${t.label || `test ${i+1}`}</div>`
+  ).join('');
+  document.getElementById('ch-msg').textContent = '';
+  document.getElementById('ch-msg').className = 'ch-msg';
+  document.getElementById('script-area').innerHTML = '<em style="color:var(--muted);font-size:12px">(paleta i bloki — Phase 3)</em>';
+  document.getElementById('palette').innerHTML = '<em style="color:var(--muted);font-size:12px">paleta</em>';
+  const cvs = document.getElementById('scene');
+  cvs.getContext('2d').clearRect(0, 0, cvs.width, cvs.height);
+  showView('challenge-view');
+}
+function backToStage() { openStage(STATE.stage); }
 function backToTree() { showView('tree-view'); renderTree(); }
 
 renderTree();
@@ -205,6 +288,7 @@ window.ps.renderTree = renderTree;
 window.ps.openStage = openStage;
 window.ps.openChallenge = openChallenge;
 window.ps.backToTree = backToTree;
+window.ps.backToStage = backToStage;
 window.ps.progress = progress;
 window.ps.saveProgress = saveProgress;
 window.ps.stageProgress = stageProgress;
