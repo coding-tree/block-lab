@@ -1611,7 +1611,9 @@ function evaluateCircuit() {
 
 function getFinalOutput() {
   if (!circuitOutputWire) return 0;
-  const src = circuitLayers[circuitOutputWire.layer] && circuitLayers[circuitOutputWire.layer][circuitOutputWire.idx];
+  const { layer, idx } = circuitOutputWire;
+  if (layer === -1) return circuitValues[circuitInputs[idx]] || 0; // wired straight from an input switch
+  const src = circuitLayers[layer] && circuitLayers[layer][idx];
   return src ? (src._output || 0) : 0;
 }
 
