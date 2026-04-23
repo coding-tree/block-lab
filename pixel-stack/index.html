@@ -29,6 +29,37 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .main { height: calc(100% - 48px); display: flex; position: relative; }
 .view { display: none; width: 100%; height: 100%; }
 .view.active { display: flex; }
+
+#tree-view { flex-direction: column; align-items: center; overflow-y: auto; padding: 40px 20px 80px; }
+.tree-track-label {
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
+  padding: 6px 16px; border-radius: 20px; margin: 30px 0 16px;
+}
+.tree-track-label.green { color: var(--green); background: #00ff8815; }
+.tree-track-label.blue { color: var(--blue); background: #4488ff15; }
+.tree-connector { width: 2px; height: 28px; background: var(--border); }
+.tree-node {
+  width: 200px; padding: 16px; border-radius: var(--r); border: 2px solid var(--border);
+  background: var(--bg2); text-align: center; cursor: pointer; transition: all .2s;
+  position: relative;
+}
+.tree-node:hover { border-color: var(--border2); transform: translateY(-2px); }
+.tree-node.locked { opacity: .4; cursor: default; filter: grayscale(.6); }
+.tree-node.locked:hover { transform: none; border-color: var(--border); }
+.tree-node.available { border-color: var(--border2); animation: pulse-border 2s ease-in-out infinite; }
+.tree-node.complete .node-icon { filter: none; }
+.tree-node .node-icon { font-size: 28px; margin-bottom: 6px; }
+.tree-node .node-title { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.tree-node .node-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.tree-node .node-stars { margin-top: 8px; font-size: 11px; color: var(--muted); letter-spacing: 2px; }
+@keyframes pulse-border { 0%,100% { box-shadow: 0 0 0 0 transparent; } 50% { box-shadow: 0 0 16px -4px var(--border2); } }
+
+.tree-node.t-green { border-color: #00ff8833; }
+.tree-node.t-green.available { border-color: var(--green); box-shadow: 0 0 20px -6px var(--green); }
+.tree-node.t-green.complete { border-color: var(--green); background: #00ff8808; }
+.tree-node.t-blue { border-color: #4488ff33; }
+.tree-node.t-blue.available { border-color: var(--blue); box-shadow: 0 0 20px -6px var(--blue); }
+.tree-node.t-blue.complete { border-color: var(--blue); background: #4488ff08; }
 </style>
 </head>
 <body>
@@ -38,17 +69,87 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   <div class="badge" id="stars-badge">⭐ 0 / 0</div>
 </div>
 <div class="main">
-  <div id="tree-view" class="view active">TREE</div>
+  <div id="tree-view" class="view active"><div id="tree-root"></div></div>
   <div id="challenge-view" class="view">CHALLENGE</div>
   <div id="sandbox-view" class="view">SANDBOX</div>
 </div>
 <script>
+const STAGES = [
+  { id: 'pixels',   track: 'basics', title: 'Pixels',   icon: '🎨', desc: 'x/y, rozmiar, kolor',           requires: [] },
+  { id: 'tick',     track: 'basics', title: 'Tick',     icon: '🕐', desc: 'game loop, co klatkę',          requires: ['pixels'] },
+  { id: 'autonomy', track: 'actors', title: 'Autonomy', icon: '🧠', desc: 'każdy sprite własna pętla',     requires: ['tick'] },
+  { id: 'motion',   track: 'actors', title: 'Motion',   icon: '➡️', desc: 'prędkość, grawitacja',          requires: ['autonomy'] },
+];
+
+const TRACKS = {
+  basics: { label: 'Basics', color: 'green' },
+  actors: { label: 'Actors', color: 'blue' },
+};
+
 const STATE = { view: 'tree-view', stage: null, challenge: null };
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
   STATE.view = id;
 }
+
+function progress() {
+  try { return JSON.parse(localStorage.getItem('pixelstack-progress') || '{}'); }
+  catch { return {}; }
+}
+function saveProgress(p) { localStorage.setItem('pixelstack-progress', JSON.stringify(p)); }
+function stageProgress(id) { return progress()[id] || { stars: [] }; }
+function isStageComplete(id) {
+  const p = stageProgress(id);
+  const earned = (p.stars || []).filter(s => s > 0).length;
+  return earned >= 3;
+}
+function isStageAvailable(id) {
+  const stage = STAGES.find(s => s.id === id);
+  return stage.requires.every(r => isStageComplete(r));
+}
+
+function renderTree() {
+  const root = document.getElementById('tree-root');
+  root.innerHTML = '';
+  const byTrack = {};
+  STAGES.forEach(s => { (byTrack[s.track] ||= []).push(s); });
+  Object.entries(byTrack).forEach(([trackId, stages]) => {
+    const meta = TRACKS[trackId];
+    const label = document.createElement('div');
+    label.className = `tree-track-label ${meta.color}`;
+    label.textContent = meta.label;
+    root.appendChild(label);
+    stages.forEach((s, i) => {
+      if (i > 0) {
+        const c = document.createElement('div');
+        c.className = 'tree-connector';
+        root.appendChild(c);
+      }
+      const complete = isStageComplete(s.id);
+      const available = isStageAvailable(s.id);
+      const locked = !complete && !available;
+      const node = document.createElement('div');
+      node.className = `tree-node t-${meta.color} ${complete ? 'complete' : available ? 'available' : 'locked'}`;
+      node.innerHTML = `
+        <div class="node-icon">${s.icon}</div>
+        <div class="node-title">${s.title}</div>
+        <div class="node-desc">${s.desc}</div>
+      `;
+      if (!locked) node.addEventListener('click', () => openStage(s.id));
+      root.appendChild(node);
+    });
+  });
+}
+function openStage(id) { console.log('open stage', id); /* Task 4 */ }
+
+renderTree();
+
 window.ps = { STATE, showView };
+window.ps.renderTree = renderTree;
+window.ps.openStage = openStage;
+window.ps.progress = progress;
+window.ps.saveProgress = saveProgress;
+window.ps.stageProgress = stageProgress;
 </script>
 </body>
 </html>
