@@ -80,6 +80,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .challenge-item .ci-stars { font-size: 14px; letter-spacing: 1px; }
 
 #challenge-view { flex-direction: column; }
+#sandbox-view { flex-direction: column; }
 .ch-topbar {
   display: flex; align-items: center; gap: 16px; padding: 12px 20px;
   background: var(--bg2); border-bottom: 1px solid var(--border);
@@ -134,6 +135,23 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .nested.b-state  { background: #4488ff33; }
 .nested.b-math   { background: #ffaa0033; }
 .nested.b-motion { background: #00ddff33; }
+
+.sb-btn {
+  padding: 4px 10px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); border-radius: 6px; cursor: pointer; font-family: var(--font);
+  font-size: 12px;
+}
+.sb-btn:hover { color: var(--text); border-color: var(--border2); }
+.sb-sprite-list { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.sb-sprite-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+  cursor: pointer; font-size: 12px; color: var(--muted); margin-bottom: 4px;
+}
+.sb-sprite-item:hover { color: var(--text); background: var(--bg3); }
+.sb-sprite-item.active { background: var(--bg3); color: var(--text); border: 1px solid var(--border2); }
+.sb-sprite-color { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+.sb-sprite-name { flex: 1; }
+#sb-scene { background: #000; image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px; }
 </style>
 </head>
 <body>
@@ -168,7 +186,30 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
       </aside>
     </div>
   </div>
-  <div id="sandbox-view" class="view">SANDBOX</div>
+  <div id="sandbox-view" class="view">
+    <div class="ch-topbar">
+      <button class="back" onclick="ps.backToTree()">← drzewo</button>
+      <span class="ch-title">Sandbox</span>
+      <button id="sb-add" class="sb-btn">+ sprite</button>
+      <button id="sb-del" class="sb-btn">− usuń</button>
+    </div>
+    <div class="ch-body">
+      <aside class="ch-col palette">
+        <div id="sb-sprite-list" class="sb-sprite-list"></div>
+        <div id="sb-palette"></div>
+      </aside>
+      <section class="ch-col ch-main">
+        <div id="sb-script-area" class="script-area"></div>
+        <canvas id="sb-scene" width="512" height="320"></canvas>
+        <div class="ch-controls">
+          <button id="sb-run">▶</button>
+          <button id="sb-pause">⏸</button>
+          <button id="sb-step">⏭</button>
+          <button id="sb-reset">🔄</button>
+        </div>
+      </section>
+    </div>
+  </div>
   <div id="browser-view" class="view"></div>
 </div>
 <script>
@@ -491,6 +532,11 @@ function renderTree() {
       root.appendChild(node);
     });
   });
+  const sb = document.createElement('button');
+  sb.textContent = '🧪 Sandbox';
+  sb.style.cssText = 'margin-top:40px;padding:10px 24px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:600;';
+  sb.addEventListener('click', openSandbox);
+  root.appendChild(sb);
 }
 function openStage(id) {
   STATE.stage = id;
@@ -652,7 +698,7 @@ function openChallenge(stageId, idx) {
   showView('challenge-view');
 }
 function backToStage() { openStage(STATE.stage); }
-function backToTree() { showView('tree-view'); renderTree(); }
+function backToTree() { worldStop(); showView('tree-view'); renderTree(); }
 
 function makeDefaultSlots(def) {
   const out = {};
@@ -663,20 +709,48 @@ function makeDefaultSlots(def) {
 document.addEventListener('dragstart', e => {
   const t = e.target.closest && e.target.closest('.palette-block');
   if (!t || !t.dataset.blockId) return;
-  // only palette items carry dataset.blockId set by renderPalette; script-area blocks don't
-  if (!t.closest('#palette')) return;
+  // only palette items carry dataset.blockId set by renderPalette / renderSandboxPalette
+  if (!(t.closest('#palette') || t.closest('#sb-palette'))) return;
   e.dataTransfer.setData('text/block-id', t.dataset.blockId);
   e.dataTransfer.effectAllowed = 'copy';
 });
 
-const scriptArea = document.getElementById('script-area');
-scriptArea.addEventListener('dragover', e => {
-  if (e.dataTransfer.types.includes('text/block-id')) { e.preventDefault(); }
+function getActiveScriptContext(e) {
+  const root = e.target.closest && e.target.closest('#script-area, #sb-script-area');
+  if (!root) return null;
+  if (root.id === 'script-area') return { root, scriptOwner: 'challenge' };
+  if (root.id === 'sb-script-area') return { root, scriptOwner: 'sandbox' };
+  return null;
+}
+function getActiveScript(ownerKey) {
+  if (ownerKey === 'challenge') return STATE.script;
+  if (ownerKey === 'sandbox') {
+    const sp = SB.sprites[SB.activeIdx];
+    if (!sp) return null;
+    if (!sp.script) sp.script = [];
+    return sp.script;
+  }
+  return null;
+}
+function rerenderScript(ownerKey) {
+  if (ownerKey === 'challenge') renderScript();
+  else if (ownerKey === 'sandbox') renderSandboxScript();
+}
+function isFillInForContext(ownerKey) {
+  return ownerKey === 'challenge' && isFillInMode();
+}
+
+document.body.addEventListener('dragover', e => {
+  if (!getActiveScriptContext(e)) return;
+  if (e.dataTransfer.types.includes('text/block-id')) e.preventDefault();
 });
-scriptArea.addEventListener('drop', e => {
+document.body.addEventListener('drop', e => {
+  const ctx = getActiveScriptContext(e); if (!ctx) return;
   e.preventDefault();
   const id = e.dataTransfer.getData('text/block-id');
   const def = BLOCKS[id]; if (!def) return;
+  const script = getActiveScript(ctx.scriptOwner);
+  if (!script && ctx.scriptOwner === 'sandbox') return;
 
   // Expression → expression slot (works in both fill-in-blank and normal modes)
   if (def.type === 'expression') {
@@ -691,28 +765,29 @@ scriptArea.addEventListener('drop', e => {
     if (!slotDef || slotDef.type !== 'expression') return;
     node.slots = node.slots || {};
     node.slots[slotKey] = { id, slots: makeDefaultSlots(def) };
-    renderScript();
+    rerenderScript(ctx.scriptOwner);
     return;
   }
 
-  // Trigger / statement drops are block-level — disabled in fill-in-blank mode
-  if (isFillInMode()) return;
+  // Trigger / statement drops are block-level — disabled in fill-in-blank challenge mode
+  if (isFillInForContext(ctx.scriptOwner)) return;
   const targetBody = e.target.closest('[data-role="body"]');
   const defaults = makeDefaultSlots(def);
   if (def.type === 'trigger') {
     if (targetBody) { alert('Trigger nie może być w ciele innego triggera.'); return; }
-    STATE.script.push({ id, slots: defaults, body: [] });
+    script.push({ id, slots: defaults, body: [] });
   } else if (def.type === 'statement') {
     if (!targetBody) { alert('Przeciągnij blok do ciała triggera (obszar z lewym paskiem).'); return; }
     const ti = Number(targetBody.dataset.triggerIdx);
-    STATE.script[ti].body.push({ id, slots: defaults });
+    script[ti].body.push({ id, slots: defaults });
   } else {
     return;
   }
-  renderScript();
+  rerenderScript(ctx.scriptOwner);
 });
 
-scriptArea.addEventListener('click', e => {
+document.body.addEventListener('click', e => {
+  const ctx = getActiveScriptContext(e); if (!ctx) return;
   const slotEl = e.target.closest('.slot');
   if (!slotEl) return;
   if (slotEl.dataset.locked === '1') return;
@@ -725,10 +800,10 @@ scriptArea.addEventListener('click', e => {
   // nested block in slot — not a literal, skip (right-click to revert)
   const cur = node.slots ? node.slots[slotKey] : undefined;
   if (cur && typeof cur === 'object') return;
-  openSlotEditor(slotEl, node, slotKey, slotDef);
+  openSlotEditor(slotEl, node, slotKey, slotDef, ctx.scriptOwner);
 });
 
-function openSlotEditor(slotEl, node, key, def) {
+function openSlotEditor(slotEl, node, key, def, ownerKey = 'challenge') {
   const cur = node.slots ? node.slots[key] : def.default;
   let input;
   if (def.type === 'choice') {
@@ -754,13 +829,14 @@ function openSlotEditor(slotEl, node, key, def) {
     else if (def.type === 'expression') v = isNaN(Number(v)) || v === '' ? v : Number(v);
     if (!node.slots) node.slots = {};
     node.slots[key] = v;
-    renderScript();
+    rerenderScript(ownerKey);
   };
   input.addEventListener('blur', commit);
-  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') input.blur(); if (ev.key === 'Escape') { ev.preventDefault(); renderScript(); } });
+  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') input.blur(); if (ev.key === 'Escape') { ev.preventDefault(); rerenderScript(ownerKey); } });
 }
 
-scriptArea.addEventListener('contextmenu', e => {
+document.body.addEventListener('contextmenu', e => {
+  const ctx = getActiveScriptContext(e); if (!ctx) return;
   // Right-click on a slot that currently holds a nested expression → revert to default literal.
   const slot = e.target.closest('.slot');
   if (slot && slot.dataset.locked !== '1') {
@@ -773,25 +849,27 @@ scriptArea.addEventListener('contextmenu', e => {
         const def = BLOCKS[node.id];
         const slotDef = def && def.slots && def.slots[slotKey];
         node.slots[slotKey] = slotDef ? slotDef.default : 0;
-        renderScript();
+        rerenderScript(ctx.scriptOwner);
         return;
       }
     }
   }
-  // Block-level removal (not allowed in fill-in-blank mode).
-  if (isFillInMode()) return;
+  // Block-level removal (not allowed in fill-in-blank challenge mode).
+  if (isFillInForContext(ctx.scriptOwner)) return;
   const block = e.target.closest('.palette-block');
   if (!block || !block.__node) return;
   e.preventDefault();
   if (!confirm('Usunąć ten blok?')) return;
-  removeNode(block.__node);
-  renderScript();
+  const script = getActiveScript(ctx.scriptOwner);
+  if (!script) return;
+  removeNodeFrom(script, block.__node);
+  rerenderScript(ctx.scriptOwner);
 });
 
-function removeNode(target) {
-  for (let ti = 0; ti < STATE.script.length; ti++) {
-    const trig = STATE.script[ti];
-    if (trig === target) { STATE.script.splice(ti, 1); return; }
+function removeNodeFrom(script, target) {
+  for (let ti = 0; ti < script.length; ti++) {
+    const trig = script[ti];
+    if (trig === target) { script.splice(ti, 1); return; }
     const bi = (trig.body || []).indexOf(target);
     if (bi >= 0) { trig.body.splice(bi, 1); return; }
   }
@@ -811,16 +889,21 @@ function makeSprite(opts = {}) {
   };
 }
 
-function drawScene(sprites) {
-  const cvs = document.getElementById('scene');
+function drawScene(sprites, canvasId = 'scene') {
+  const cvs = document.getElementById(canvasId);
+  if (!cvs) return;
   const ctx = cvs.getContext('2d');
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cvs.width, cvs.height);
   sprites.forEach(s => {
-    if (!s.alive) return;
+    if (!s.alive && s.alive !== undefined) return;
     ctx.fillStyle = s.color;
-    ctx.fillRect(Math.round(s.x), Math.round(s.y), s.w, s.h);
+    ctx.fillRect(Math.round(s.x), Math.round(s.y), s.w || 16, s.h || 16);
   });
+}
+
+function drawSandboxScene(sprites) {
+  drawScene(sprites, 'sb-scene');
 }
 
 function evalExpr(node, ctx) {
@@ -882,7 +965,7 @@ function runTrigger(trigId, sprite, globals) {
   }
 }
 
-const WORLD = { sprites: [], globals: {}, running: false, tick: 0, raf: 0 };
+const WORLD = { sprites: [], globals: {}, running: false, tick: 0, raf: 0, canvasId: 'scene' };
 
 function worldReset(sprites) {
   // Fresh sprite copies (do NOT mutate the originals passed in)
@@ -894,10 +977,11 @@ function worldReset(sprites) {
 function worldStart() {
   if (WORLD.running) return;
   WORLD.running = true;
+  const canvasId = WORLD.canvasId || 'scene';
   const loop = () => {
     if (!WORLD.running) return;
     stepOnce();
-    drawScene(WORLD.sprites);
+    drawScene(WORLD.sprites, canvasId);
     WORLD.raf = requestAnimationFrame(loop);
   };
   WORLD.raf = requestAnimationFrame(loop);
@@ -1002,11 +1086,13 @@ function updateStarsBadge() {
 
 document.getElementById('btn-run').addEventListener('click', () => {
   worldStop();
+  WORLD.canvasId = 'scene';
   worldReset(compileSpritesForChallenge());
   worldStart();
 });
 document.getElementById('btn-reset').addEventListener('click', () => {
   worldStop();
+  WORLD.canvasId = 'scene';
   worldReset(compileSpritesForChallenge());
   drawScene(WORLD.sprites);
 });
@@ -1017,6 +1103,131 @@ document.getElementById('btn-check').addEventListener('click', () => {
   const results = runTests(ch);
   const pass = renderTestResults(results);
   if (pass) awardStar(ch, 1);
+});
+
+// ===== Sandbox =====
+const SB = {
+  sprites: [],
+  activeIdx: 0,
+};
+
+function sbDefaultSprite(i) {
+  const palette = ['#00ff88', '#4488ff', '#ff55ff', '#ffaa00', '#00ddff', '#bb66ff'];
+  return { name: `sprite${i+1}`, color: palette[i % palette.length], x: 80 + i * 60, y: 140, w: 16, h: 16, script: [] };
+}
+
+function openSandbox() {
+  if (!SB.sprites.length) SB.sprites.push(sbDefaultSprite(0));
+  SB.activeIdx = Math.min(SB.activeIdx, SB.sprites.length - 1);
+  worldStop();
+  renderSandbox();
+  showView('sandbox-view');
+  drawSandboxScene(SB.sprites);
+}
+
+function renderSandbox() {
+  renderSandboxSpriteList();
+  renderSandboxPalette();
+  renderSandboxScript();
+  drawSandboxScene(SB.sprites);
+}
+
+function renderSandboxSpriteList() {
+  const el = document.getElementById('sb-sprite-list');
+  el.innerHTML = '';
+  SB.sprites.forEach((s, i) => {
+    const item = document.createElement('div');
+    item.className = 'sb-sprite-item' + (i === SB.activeIdx ? ' active' : '');
+    const dot = document.createElement('span');
+    dot.className = 'sb-sprite-color';
+    dot.style.background = s.color;
+    const name = document.createElement('span');
+    name.className = 'sb-sprite-name';
+    name.textContent = s.name;
+    item.appendChild(dot); item.appendChild(name);
+    item.addEventListener('click', () => {
+      SB.activeIdx = i;
+      renderSandboxSpriteList();
+      renderSandboxScript();
+    });
+    el.appendChild(item);
+  });
+}
+
+function renderSandboxPalette() {
+  const el = document.getElementById('sb-palette');
+  el.innerHTML = '';
+  Object.keys(CATEGORIES).forEach(catId => {
+    const meta = CATEGORIES[catId];
+    const group = document.createElement('div');
+    group.className = 'palette-cat';
+    group.innerHTML = `<div class="palette-cat-label">${meta.label}</div>`;
+    Object.entries(BLOCKS).filter(([,b]) => b.cat === catId).forEach(([id, b]) => {
+      const bl = document.createElement('div');
+      bl.className = `palette-block b-${catId}`;
+      bl.draggable = true;
+      bl.dataset.blockId = id;
+      bl.textContent = b.label.replace(/§\w+/g, '…');
+      group.appendChild(bl);
+    });
+    el.appendChild(group);
+  });
+}
+
+function renderSandboxScript() {
+  const el = document.getElementById('sb-script-area');
+  el.innerHTML = '';
+  const active = SB.sprites[SB.activeIdx];
+  if (!active) return;
+  const opts = { lockLiterals: false };
+  (active.script || []).forEach((trig, ti) => {
+    const def = BLOCKS[trig.id]; if (!def) return;
+    el.appendChild(renderBlockEl(trig, def, opts));
+    const body = document.createElement('div');
+    body.className = 'script-body';
+    body.dataset.role = 'body';
+    body.dataset.triggerIdx = ti;
+    body.style.cssText = 'margin-left:20px;border-left:2px solid var(--border);padding-left:10px;margin-bottom:8px;';
+    (trig.body || []).forEach(n => {
+      const def2 = BLOCKS[n.id]; if (!def2) return;
+      body.appendChild(renderBlockEl(n, def2, opts));
+    });
+    el.appendChild(body);
+  });
+}
+
+document.getElementById('sb-add').addEventListener('click', () => {
+  SB.sprites.push(sbDefaultSprite(SB.sprites.length));
+  SB.activeIdx = SB.sprites.length - 1;
+  renderSandbox();
+});
+document.getElementById('sb-del').addEventListener('click', () => {
+  if (SB.sprites.length <= 1) return;
+  SB.sprites.splice(SB.activeIdx, 1);
+  SB.activeIdx = Math.min(SB.activeIdx, SB.sprites.length - 1);
+  renderSandbox();
+});
+document.getElementById('sb-run').addEventListener('click', () => {
+  worldStop();
+  WORLD.canvasId = 'sb-scene';
+  const sprites = SB.sprites.map(s => makeSprite({ ...s, script: s.script }));
+  worldReset(sprites);
+  worldStart();
+});
+document.getElementById('sb-pause').addEventListener('click', () => worldStop());
+document.getElementById('sb-step').addEventListener('click', () => {
+  if (WORLD.sprites.length === 0) {
+    WORLD.canvasId = 'sb-scene';
+    worldReset(SB.sprites.map(s => makeSprite({ ...s, script: s.script })));
+  }
+  try { stepOnce(); } catch (e) { console.warn('sandbox step error:', e); }
+  drawScene(WORLD.sprites, 'sb-scene');
+});
+document.getElementById('sb-reset').addEventListener('click', () => {
+  worldStop();
+  WORLD.canvasId = 'sb-scene';
+  worldReset(SB.sprites.map(s => makeSprite({ ...s, script: s.script })));
+  drawScene(WORLD.sprites, 'sb-scene');
 });
 
 renderTree();
@@ -1051,6 +1262,10 @@ window.ps.runTests = runTests;
 window.ps.renderTestResults = renderTestResults;
 window.ps.awardStar = awardStar;
 window.ps.updateStarsBadge = updateStarsBadge;
+window.ps.SB = SB;
+window.ps.openSandbox = openSandbox;
+window.ps.renderSandbox = renderSandbox;
+window.ps.drawSandboxScene = drawSandboxScene;
 
 function __dev_tests() {
   const fail = [], pass = [];
