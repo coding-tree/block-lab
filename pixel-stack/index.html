@@ -294,6 +294,49 @@ function openStage(id) {
   });
   showView('browser-view');
 }
+function emptyScript() { return []; }
+
+function labelHtml(def, slots) {
+  return def.label.replace(/§(\w+)/g, (_, key) => {
+    const val = slots && key in slots ? slots[key] : def.slots?.[key]?.default ?? '';
+    return `<span class="slot" data-slot="${key}">${slotDisplay(val)}</span>`;
+  });
+}
+function slotDisplay(v) {
+  if (v && typeof v === 'object' && v.id) return BLOCKS[v.id]?.label.replace(/§\w+/g, '…') || '?';
+  return String(v);
+}
+
+function renderScript() {
+  const el = document.getElementById('script-area');
+  el.innerHTML = '';
+  STATE.script = STATE.script || emptyScript();
+  STATE.script.forEach((trig, ti) => {
+    const def = BLOCKS[trig.id];
+    if (!def) return;
+    const head = document.createElement('div');
+    head.className = `palette-block b-${def.cat}`;
+    head.innerHTML = labelHtml(def, trig.slots);
+    head.__node = trig;
+    el.appendChild(head);
+    const body = document.createElement('div');
+    body.className = 'script-body';
+    body.dataset.role = 'body';
+    body.dataset.triggerIdx = ti;
+    body.style.cssText = 'margin-left:20px;border-left:2px solid var(--border);padding-left:10px;margin-bottom:8px;';
+    (trig.body || []).forEach((n) => {
+      const def2 = BLOCKS[n.id];
+      if (!def2) return;
+      const b = document.createElement('div');
+      b.className = `palette-block b-${def2.cat}`;
+      b.innerHTML = labelHtml(def2, n.slots);
+      b.__node = n;
+      body.appendChild(b);
+    });
+    el.appendChild(body);
+  });
+}
+
 function renderPalette(cats) {
   const el = document.getElementById('palette');
   el.innerHTML = '';
@@ -328,7 +371,8 @@ function openChallenge(stageId, idx) {
   ).join('');
   document.getElementById('ch-msg').textContent = '';
   document.getElementById('ch-msg').className = 'ch-msg';
-  document.getElementById('script-area').innerHTML = '<em style="color:var(--muted);font-size:12px">(paleta i bloki — Phase 3)</em>';
+  STATE.script = JSON.parse(JSON.stringify(ch.initialScript || []));
+  renderScript();
   const stage = STAGES.find(s => s.id === stageId);
   renderPalette(stage.unlockedCats);
   const cvs = document.getElementById('scene');
@@ -343,6 +387,7 @@ renderTree();
 window.ps = { STATE, showView };
 window.ps.renderTree = renderTree;
 window.ps.renderPalette = renderPalette;
+window.ps.renderScript = renderScript;
 window.ps.openStage = openStage;
 window.ps.openChallenge = openChallenge;
 window.ps.backToTree = backToTree;
