@@ -612,6 +612,58 @@ function compileActiveSprite() {
   return makeSprite({ ...init, script: STATE.script });
 }
 
+function runHeadless(maxTicks, sprites) {
+  worldReset(sprites);
+  for (let i = 0; i < maxTicks; i++) stepOnce();
+  return { s: WORLD.sprites[0], sprites: WORLD.sprites, globals: WORLD.globals, tick: WORLD.tick };
+}
+
+function evalAssert(exprStr, env) {
+  try {
+    const fn = new Function('s', 'sprites', 'globals', 'tick', `return (${exprStr});`);
+    return !!fn(env.s, env.sprites, env.globals, env.tick);
+  } catch (e) {
+    console.warn('assert error', e);
+    return false;
+  }
+}
+
+function runTests(ch) {
+  const results = [];
+  for (const test of ch.tests || []) {
+    const maxT = test.t || 0;
+    const env = runHeadless(maxT, [compileActiveSprite()]);
+    results.push({ label: test.label || ('t=' + maxT), pass: evalAssert(test.assert, env) });
+  }
+  return results;
+}
+
+function renderTestResults(results) {
+  const el = document.getElementById('ch-tests');
+  el.innerHTML = results.map(r =>
+    `<div class="${r.pass ? 't-pass' : 't-fail'}">${r.pass ? '✅' : '❌'} ${r.label}</div>`
+  ).join('');
+  const allPass = results.length > 0 && results.every(r => r.pass);
+  const msg = document.getElementById('ch-msg');
+  msg.className = 'ch-msg ' + (allPass ? 'success' : 'fail');
+  msg.textContent = allPass ? '🎉 Brawo! Wszystkie testy przechodzą.' : 'Niektóre testy nie przechodzą.';
+  return allPass;
+}
+
+function awardStar(ch, n) {
+  if (!STATE.stage || STATE.challenge == null) return;
+  const all = progress();
+  const entry = all[STATE.stage] = all[STATE.stage] || { stars: [] };
+  const prev = entry.stars[STATE.challenge] || 0;
+  entry.stars[STATE.challenge] = Math.max(prev, n);
+  saveProgress(all);
+  const stars = entry.stars[STATE.challenge];
+  document.getElementById('ch-stars').textContent = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+  updateStarsBadge();
+}
+
+function updateStarsBadge() { /* Task 17 */ }
+
 document.getElementById('btn-run').addEventListener('click', () => {
   worldStop();
   worldReset([compileActiveSprite()]);
@@ -621,6 +673,14 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   worldStop();
   worldReset([compileActiveSprite()]);
   drawScene(WORLD.sprites);
+});
+document.getElementById('btn-check').addEventListener('click', () => {
+  const ch = (CHALLENGES[STATE.stage] || [])[STATE.challenge];
+  if (!ch) return;
+  worldStop(); // stop any live animation
+  const results = runTests(ch);
+  const pass = renderTestResults(results);
+  if (pass) awardStar(ch, 1);
 });
 
 renderTree();
@@ -647,6 +707,12 @@ window.ps.worldStart = worldStart;
 window.ps.worldStop = worldStop;
 window.ps.stepOnce = stepOnce;
 window.ps.compileActiveSprite = compileActiveSprite;
+window.ps.runHeadless = runHeadless;
+window.ps.evalAssert = evalAssert;
+window.ps.runTests = runTests;
+window.ps.renderTestResults = renderTestResults;
+window.ps.awardStar = awardStar;
+window.ps.updateStarsBadge = updateStarsBadge;
 
 function __dev_tests() {
   const fail = [], pass = [];
