@@ -118,6 +118,15 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .ch-msg { margin-top: 12px; font-weight: 600; font-size: 13px; }
 .ch-msg.success { color: var(--green); }
 .ch-msg.fail { color: var(--red); }
+
+.palette-cat { margin-bottom: 14px; }
+.palette-cat-label { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.palette-block { padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: var(--mono); color: var(--text); cursor: grab; margin-bottom: 4px; user-select: none; }
+.palette-block.b-draw   { background: #ff55ff22; border: 1px solid #ff55ff55; }
+.palette-block.b-loop   { background: #00ff8822; border: 1px solid #00ff8855; }
+.palette-block.b-state  { background: #4488ff22; border: 1px solid #4488ff55; }
+.palette-block.b-math   { background: #ffaa0022; border: 1px solid #ffaa0055; }
+.palette-block.b-motion { background: #00ddff22; border: 1px solid #00ddff55; }
 </style>
 </head>
 <body>
@@ -157,15 +166,42 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 </div>
 <script>
 const STAGES = [
-  { id: 'pixels',   track: 'basics', title: 'Pixels',   icon: '🎨', desc: 'x/y, rozmiar, kolor',           requires: [] },
-  { id: 'tick',     track: 'basics', title: 'Tick',     icon: '🕐', desc: 'game loop, co klatkę',          requires: ['pixels'] },
-  { id: 'autonomy', track: 'actors', title: 'Autonomy', icon: '🧠', desc: 'każdy sprite własna pętla',     requires: ['tick'] },
-  { id: 'motion',   track: 'actors', title: 'Motion',   icon: '➡️', desc: 'prędkość, grawitacja',          requires: ['autonomy'] },
+  { id: 'pixels',   track: 'basics', title: 'Pixels',   icon: '🎨', desc: 'x/y, rozmiar, kolor',           requires: [],           unlockedCats: ['draw'] },
+  { id: 'tick',     track: 'basics', title: 'Tick',     icon: '🕐', desc: 'game loop, co klatkę',          requires: ['pixels'],   unlockedCats: ['draw','loop','state','math'] },
+  { id: 'autonomy', track: 'actors', title: 'Autonomy', icon: '🧠', desc: 'każdy sprite własna pętla',     requires: ['tick'],     unlockedCats: ['draw','loop','state','math'] },
+  { id: 'motion',   track: 'actors', title: 'Motion',   icon: '➡️', desc: 'prędkość, grawitacja',          requires: ['autonomy'], unlockedCats: ['draw','loop','state','math','motion'] },
 ];
 
 const TRACKS = {
   basics: { label: 'Basics', color: 'green' },
   actors: { label: 'Actors', color: 'blue' },
+};
+
+const BLOCKS = {
+  'set-pos':     { cat: 'draw',   type: 'statement',  label: 'postaw w (x: §x, y: §y)',     slots: { x: { type: 'number', default: 100 }, y: { type: 'number', default: 80 } } },
+  'set-size':    { cat: 'draw',   type: 'statement',  label: 'rozmiar (w: §w, h: §h)',      slots: { w: { type: 'number', default: 16 }, h: { type: 'number', default: 16 } } },
+  'set-color':   { cat: 'draw',   type: 'statement',  label: 'kolor §c',                     slots: { c: { type: 'color',  default: '#00ff88' } } },
+  'on-start':    { cat: 'loop',   type: 'trigger',    label: '🟢 na start' },
+  'on-tick':     { cat: 'loop',   type: 'trigger',    label: '🕐 co tick' },
+  'set-state':   { cat: 'state',  type: 'statement',  label: 'stan.§field = §val',           slots: { field: { type: 'ident', default: 'x' }, val: { type: 'expression', default: 0 } } },
+  'get-state':   { cat: 'state',  type: 'expression', label: 'stan.§field',                  slots: { field: { type: 'ident', default: 'x' } } },
+  'set-global':  { cat: 'state',  type: 'statement',  label: 'globalne.§field = §val',       slots: { field: { type: 'ident', default: 'score' }, val: { type: 'expression', default: 0 } } },
+  'num':         { cat: 'math',   type: 'expression', label: '§n',                            slots: { n: { type: 'number', default: 0 } } },
+  'op':          { cat: 'math',   type: 'expression', label: '(§a §op §b)',                  slots: { a: { type: 'expression', default: 0 }, op: { type: 'choice', options: ['+','-','*','/','%'], default: '+' }, b: { type: 'expression', default: 0 } } },
+  'my-x':        { cat: 'math',   type: 'expression', label: 'moje.x' },
+  'my-y':        { cat: 'math',   type: 'expression', label: 'moje.y' },
+  'random':      { cat: 'math',   type: 'expression', label: 'losowe (§min..§max)',          slots: { min: { type: 'expression', default: 0 }, max: { type: 'expression', default: 100 } } },
+  'move-by':     { cat: 'motion', type: 'statement',  label: 'przesuń o (§dx, §dy)',         slots: { dx: { type: 'expression', default: 1 }, dy: { type: 'expression', default: 0 } } },
+  'set-vel':     { cat: 'motion', type: 'statement',  label: 'ustaw prędkość (§vx, §vy)',    slots: { vx: { type: 'expression', default: 0 }, vy: { type: 'expression', default: 0 } } },
+  'set-gravity': { cat: 'motion', type: 'statement',  label: 'grawitacja (§gx, §gy)',        slots: { gx: { type: 'expression', default: 0 }, gy: { type: 'expression', default: 0.2 } } },
+};
+
+const CATEGORIES = {
+  draw:   { label: 'Rysowanie', color: 'pink' },
+  loop:   { label: 'Pętla',     color: 'green' },
+  state:  { label: 'Stan',      color: 'blue' },
+  math:   { label: 'Math',      color: 'orange' },
+  motion: { label: 'Ruch',      color: 'cyan' },
 };
 
 const CHALLENGES = {
@@ -258,6 +294,26 @@ function openStage(id) {
   });
   showView('browser-view');
 }
+function renderPalette(cats) {
+  const el = document.getElementById('palette');
+  el.innerHTML = '';
+  cats.forEach(catId => {
+    const meta = CATEGORIES[catId];
+    const group = document.createElement('div');
+    group.className = 'palette-cat';
+    group.innerHTML = `<div class="palette-cat-label">${meta.label}</div>`;
+    Object.entries(BLOCKS).filter(([,b]) => b.cat === catId).forEach(([id, b]) => {
+      const bl = document.createElement('div');
+      bl.className = `palette-block b-${catId}`;
+      bl.draggable = true;
+      bl.dataset.blockId = id;
+      bl.textContent = b.label.replace(/§\w+/g, '…');
+      group.appendChild(bl);
+    });
+    el.appendChild(group);
+  });
+}
+
 function openChallenge(stageId, idx) {
   STATE.stage = stageId;
   STATE.challenge = idx;
@@ -273,7 +329,8 @@ function openChallenge(stageId, idx) {
   document.getElementById('ch-msg').textContent = '';
   document.getElementById('ch-msg').className = 'ch-msg';
   document.getElementById('script-area').innerHTML = '<em style="color:var(--muted);font-size:12px">(paleta i bloki — Phase 3)</em>';
-  document.getElementById('palette').innerHTML = '<em style="color:var(--muted);font-size:12px">paleta</em>';
+  const stage = STAGES.find(s => s.id === stageId);
+  renderPalette(stage.unlockedCats);
   const cvs = document.getElementById('scene');
   cvs.getContext('2d').clearRect(0, 0, cvs.width, cvs.height);
   showView('challenge-view');
@@ -285,6 +342,7 @@ renderTree();
 
 window.ps = { STATE, showView };
 window.ps.renderTree = renderTree;
+window.ps.renderPalette = renderPalette;
 window.ps.openStage = openStage;
 window.ps.openChallenge = openChallenge;
 window.ps.backToTree = backToTree;
