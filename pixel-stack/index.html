@@ -212,6 +212,60 @@ const CHALLENGES = {
   motion:   [],
 };
 
+CHALLENGES.pixels = [
+  {
+    title: 'Postaw kulkę w (100, 80)',
+    type: 'fill-in-blank',
+    goal: 'Ustaw sprite w konkretnym punkcie.',
+    initialSprites: [{ color: '#00ff88' }],
+    initialScript: [{ id: 'on-start', body: [
+      { id: 'set-pos', slots: { x: null, y: null } }
+    ]}],
+    tests: [{ t: 0, label: 'x=100, y=80', assert: 's.x === 100 && s.y === 80' }]
+  },
+  {
+    title: 'Zmień kolor i rozmiar',
+    type: 'fill-in-blank',
+    goal: 'Niech kulka będzie różowa (#ff55ff) i mieć rozmiar 32×32.',
+    initialSprites: [{ color: '#00ff88' }],
+    initialScript: [{ id: 'on-start', body: [
+      { id: 'set-pos',   slots: { x: 100, y: 80 } },
+      { id: 'set-size',  slots: { w: null, h: null } },
+      { id: 'set-color', slots: { c: null } }
+    ]}],
+    tests: [
+      { t: 0, label: 'rozmiar 32×32', assert: 's.w === 32 && s.h === 32' },
+      { t: 0, label: 'kolor różowy',  assert: "s.color.toLowerCase() === '#ff55ff'" }
+    ]
+  },
+  {
+    title: 'Środek sceny',
+    type: 'fill-in-blank',
+    goal: 'Ustaw sprite 20×20 w środku canvasu (scena ma 512 na 320 pikseli). Podpowiedź: pamiętaj że pozycja to lewy górny róg.',
+    initialSprites: [{ color: '#00ddff', w: 20, h: 20 }],
+    initialScript: [{ id: 'on-start', body: [
+      { id: 'set-pos', slots: { x: null, y: null } }
+    ]}],
+    tests: [
+      { t: 0, label: 'x≈246', assert: 'Math.abs(s.x - 246) < 2' },
+      { t: 0, label: 'y≈150', assert: 'Math.abs(s.y - 150) < 2' }
+    ]
+  },
+  {
+    title: 'Prawy dolny róg',
+    type: 'fill-in-blank',
+    goal: 'Postaw 16×16 kwadrat tak, żeby dotykał prawego dolnego rogu sceny (512×320).',
+    initialSprites: [{ color: '#ffaa00', w: 16, h: 16 }],
+    initialScript: [{ id: 'on-start', body: [
+      { id: 'set-pos', slots: { x: null, y: null } }
+    ]}],
+    tests: [
+      { t: 0, label: 'prawa krawędź = 512', assert: 's.x + s.w === 512' },
+      { t: 0, label: 'dolna krawędź = 320', assert: 's.y + s.h === 320' }
+    ]
+  }
+];
+
 const STATE = { view: 'tree-view', stage: null, challenge: null };
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
@@ -639,6 +693,13 @@ function compileActiveSprite() {
 function runHeadless(maxTicks, sprites) {
   worldReset(sprites);
   for (let i = 0; i < maxTicks; i++) stepOnce();
+  // Semantics: `t: 0` = post-init state (on-start has fired, no ticks run).
+  // When maxTicks > 0, on-start already fires inside the first stepOnce.
+  if (maxTicks === 0) {
+    for (const s of WORLD.sprites) {
+      if (s.alive && !s._started) { runTrigger('on-start', s, WORLD.globals); s._started = true; }
+    }
+  }
   return { s: WORLD.sprites[0], sprites: WORLD.sprites, globals: WORLD.globals, tick: WORLD.tick };
 }
 
