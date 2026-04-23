@@ -260,6 +260,34 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .challenge-item .ci-title { flex: 1; font-weight: 600; font-size: 13px; }
 .challenge-item .ci-stars { font-size: 14px; letter-spacing: 1px; }
 
+/* task modal */
+.task-modal {
+  position: fixed; inset: 0; background: #000000cc; display: flex;
+  align-items: center; justify-content: center; z-index: 180; padding: 24px;
+}
+.task-box {
+  background: var(--bg2); border: 1px solid var(--border2); border-radius: 16px;
+  padding: 28px 32px; max-width: 520px; width: 100%;
+  max-height: 80vh; overflow-y: auto;
+  animation: pop-in .25s ease-out;
+}
+.task-box h2 { font-size: 22px; margin-bottom: 4px; }
+.task-box .task-type { font-size: 11px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+.task-box .task-goal { font-size: 15px; line-height: 1.5; color: var(--text); margin-bottom: 18px; }
+.task-box .task-target { margin: 18px 0; padding: 14px; background: var(--bg3); border-radius: 8px; border: 1px solid var(--border); }
+.task-box .task-target .task-target-label {
+  font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--muted); margin-bottom: 8px;
+}
+.task-box .task-target table.truth-table { margin: 4px auto; }
+.task-box .task-target .task-target-line { font-family: var(--mono); font-size: 15px; color: var(--yellow); font-weight: 700; }
+.task-box .task-hint {
+  font-size: 13px; color: var(--orange); background: #ffaa0011; padding: 10px 12px;
+  border-radius: 8px; border: 1px solid #ffaa0033; margin-top: 12px;
+}
+.task-box .task-hint::before { content: '💡 '; }
+.task-box .task-close { margin-top: 18px; width: 100%; }
+
 /* success overlay */
 .success-overlay {
   position: fixed; inset: 0; background: #000000aa; display: flex;
@@ -747,14 +775,21 @@ function openChallenge(topicId, idx) {
   currentChallenge = currentTopic.challenges[idx];
   const ch = currentChallenge;
 
-  if (ch.type === 'binary-number') { renderBinaryChallenge(ch); return; }
-  if (ch.type === 'quiz') { renderQuizChallenge(ch); return; }
-  if (ch.type === 'truth-table-fill') { renderTruthTableFill(ch); return; }
-  if (ch.type === 'truth-table-compare') { renderTruthTableCompare(ch); return; }
-  if (ch.type === 'predict') { renderPredictChallenge(ch); return; }
-  if (ch.type === 'wire') { renderWireChallenge(ch); return; }
-  if (ch.type === 'fill') { renderFillChallenge(ch); return; }
-  if (ch.type === 'circuit' || ch.type === 'multi-input' || ch.type === 'sandbox') { renderCircuitChallenge(ch); return; }
+  if (ch.type === 'binary-number') renderBinaryChallenge(ch);
+  else if (ch.type === 'quiz') renderQuizChallenge(ch);
+  else if (ch.type === 'truth-table-fill') renderTruthTableFill(ch);
+  else if (ch.type === 'truth-table-compare') renderTruthTableCompare(ch);
+  else if (ch.type === 'predict') renderPredictChallenge(ch);
+  else if (ch.type === 'wire') renderWireChallenge(ch);
+  else if (ch.type === 'fill') renderFillChallenge(ch);
+  else if (ch.type === 'circuit' || ch.type === 'multi-input' || ch.type === 'sandbox') renderCircuitChallenge(ch);
+  else return;
+
+  // first time opening this challenge? auto-show the task description
+  if (!isTaskSeen(topicId, idx)) {
+    markTaskSeen(topicId, idx);
+    showTaskModal();
+  }
 }
 
 function awardStars(stars) {
@@ -763,6 +798,161 @@ function awardStars(stars) {
   const prev = progress[id].stars[currentChallengeIdx] || 0;
   progress[id].stars[currentChallengeIdx] = Math.max(prev, stars);
   saveProgress();
+}
+
+// ════════════════════════════════════════════════════
+//  TASK MODAL (auto-open first time, manual re-open)
+// ════════════════════════════════════════════════════
+const TASK_SEEN_KEY = 'bitstack-seen-tasks';
+function taskSeenMap() {
+  try { return JSON.parse(localStorage.getItem(TASK_SEEN_KEY) || '{}'); }
+  catch { return {}; }
+}
+function isTaskSeen(topicId, idx) {
+  return !!taskSeenMap()[`${topicId}#${idx}`];
+}
+function markTaskSeen(topicId, idx) {
+  const m = taskSeenMap();
+  m[`${topicId}#${idx}`] = 1;
+  localStorage.setItem(TASK_SEEN_KEY, JSON.stringify(m));
+}
+
+function taskTypeLabel(t) {
+  return ({
+    'predict': 'PRZEWIDUJ',
+    'wire': 'POLACZ BRAMKI',
+    'fill': 'WYBIERZ BRAMKE',
+    'circuit': 'ZBUDUJ UKLAD',
+    'sandbox': 'PIASKOWNICA',
+    'multi-input': 'USTAW PRZELACZNIKI',
+    'binary-number': 'LICZBA BINARNA',
+    'quiz': 'PYTANIE',
+    'truth-table-fill': 'WYPELNIJ TABLICE',
+    'truth-table-compare': 'PORONAJ TABLICE',
+  })[t] || '';
+}
+
+function taskTargetHtml(ch) {
+  const t = ch.type;
+
+  if (t === 'circuit' || t === 'wire') {
+    const inputs = ch.inputs || ['A','B'];
+    const n = inputs.length;
+    const rows = [];
+    for (let i = 0; i < (1 << n); i++) {
+      const combo = {};
+      inputs.forEach((name, bit) => combo[name] = (i >> (n - 1 - bit)) & 1);
+      const out = ch.targetFn ? ch.targetFn(combo) : 0;
+      rows.push({ combo, out });
+    }
+    const headers = inputs.map(n => `<th>${n}</th>`).join('') + '<th>wynik</th>';
+    const body = rows.map(r => {
+      const cells = inputs.map(n => `<td class="${r.combo[n]?'on':'off'}">${r.combo[n]}</td>`).join('');
+      return `<tr>${cells}<td class="${r.out?'on':'off'}">${r.out}</td></tr>`;
+    }).join('');
+    return `<div class="task-target">
+      <div class="task-target-label">Lampka ma swiecic gdy:</div>
+      <table class="truth-table"><tr>${headers}</tr>${body}</table>
+    </div>`;
+  }
+
+  if (t === 'fill') {
+    // Simulate preset with the correct answer to derive target truth table
+    const inputs = ch.inputs || ['A','B'];
+    const saveLayers = circuitLayers;
+    const saveInputs = circuitInputs;
+    const saveValues = { ...circuitValues };
+    const saveOutput = circuitOutputWire;
+    try {
+      const clone = (ch.preset.layers || []).map(layer =>
+        layer.map(g => ({ type: g.type === '?' ? ch.answer : g.type, wires: (g.wires || []).map(w => w ? {...w} : null) }))
+      );
+      circuitLayers = clone;
+      circuitInputs = inputs;
+      circuitValues = {};
+      // find output via heuristic
+      let ow = null;
+      for (let i = clone.length - 1; i >= 0; i--) if (clone[i].length > 0) { ow = { layer: i, idx: clone[i].length - 1 }; break; }
+      circuitOutputWire = ow;
+      const n = inputs.length;
+      const rows = [];
+      for (let i = 0; i < (1 << n); i++) {
+        const combo = {};
+        inputs.forEach((name, bit) => combo[name] = (i >> (n - 1 - bit)) & 1);
+        inputs.forEach(name => circuitValues[name] = combo[name]);
+        evaluateCircuit();
+        rows.push({ combo, out: getFinalOutput() });
+      }
+      const headers = inputs.map(n => `<th>${n}</th>`).join('') + '<th>wynik</th>';
+      const body = rows.map(r => {
+        const cells = inputs.map(n => `<td class="${r.combo[n]?'on':'off'}">${r.combo[n]}</td>`).join('');
+        return `<tr>${cells}<td class="${r.out?'on':'off'}">${r.out}</td></tr>`;
+      }).join('');
+      return `<div class="task-target">
+        <div class="task-target-label">Bramka w miejscu "?" ma dawac taka tabelke:</div>
+        <table class="truth-table"><tr>${headers}</tr>${body}</table>
+      </div>`;
+    } finally {
+      circuitLayers = saveLayers;
+      circuitInputs = saveInputs;
+      circuitValues = saveValues;
+      circuitOutputWire = saveOutput;
+      evaluateCircuit();
+    }
+  }
+
+  if (t === 'multi-input') {
+    const target = ch.targetValues || {};
+    const line = Object.entries(target).map(([k,v]) => `${k}=${v}`).join(', ');
+    return `<div class="task-target">
+      <div class="task-target-label">Ustaw przelaczniki tak:</div>
+      <div class="task-target-line">${line}</div>
+    </div>`;
+  }
+
+  if (t === 'binary-number') {
+    const bits = ch.bits || 4;
+    const bin = ch.target.toString(2).padStart(bits, '0');
+    return `<div class="task-target">
+      <div class="task-target-label">Pokaz liczbe:</div>
+      <div class="task-target-line">${ch.target}<span style="color:var(--muted);font-size:12px;margin-left:12px;">(binarnie: ${bin})</span></div>
+    </div>`;
+  }
+
+  if (t === 'quiz') {
+    return `<div class="task-target">
+      <div class="task-target-label">Pytanie:</div>
+      <div class="task-target-line" style="font-family:var(--font);font-weight:600;">${ch.question}</div>
+    </div>`;
+  }
+
+  if (t === 'predict') {
+    return `<div class="task-target">
+      <div class="task-target-label">Twoje zadanie:</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.5;">Pobaw sie przelacznikami, zobacz co robi uklad, a potem wypelnij tabele prawdy na dole ekranu. Kliknij "?" w kolumnie wynik, zeby wpisac 0 lub 1 dla kazdej kombinacji.</div>
+    </div>`;
+  }
+
+  // truth-table-fill / truth-table-compare / sandbox — no explicit target
+  return '';
+}
+
+function showTaskModal() {
+  const ch = currentChallenge;
+  if (!ch) return;
+  document.querySelectorAll('.task-modal').forEach(m => m.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'task-modal';
+  overlay.innerHTML = `<div class="task-box">
+    <div class="task-type">${taskTypeLabel(ch.type)}</div>
+    <h2>${ch.title}</h2>
+    <div class="task-goal">${ch.goal || ''}</div>
+    ${taskTargetHtml(ch)}
+    ${ch.hint ? `<div class="task-hint">${ch.hint}</div>` : ''}
+    <button class="btn btn-check task-close" onclick="this.closest('.task-modal').remove()">Zaczynam!</button>
+  </div>`;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 }
 
 function showSuccess(stars) {
@@ -811,6 +1001,7 @@ function renderBinaryChallenge(ch) {
       </div>
       <div class="challenge-controls">
         <button class="btn btn-check" onclick="window._bitCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
         <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
         <div class="challenge-msg" id="ch-msg"></div>
       </div>`;
@@ -854,7 +1045,8 @@ function renderQuizChallenge(ch) {
       <div class="challenge-msg" id="ch-msg"></div>
     </div>
     <div class="challenge-controls">
-      <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
+      <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
+        <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
     </div>`;
 
   window._quizAnswer = (ans) => {
@@ -904,6 +1096,7 @@ function renderTruthTableFill(ch) {
       </div>
       <div class="challenge-controls">
         <button class="btn btn-check" onclick="window._ttCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
         <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
         <div class="challenge-msg" id="ch-msg"></div>
       </div>`;
@@ -973,7 +1166,8 @@ function renderTruthTableCompare(ch) {
     </div>
     <div class="challenge-controls">
       <button class="btn btn-check" onclick="showSuccess(3)">Rozumiem! ✓</button>
-      <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
+      <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
+        <button class="btn btn-hint" onclick="alert('${ch.hint}')">💡 Podpowiedz</button>
     </div>`;
 
   showView('challenge');
@@ -1317,7 +1511,8 @@ function renderCircuitUI(ch, available, opts) {
     <div class="challenge-controls">
       <button class="btn btn-check" onclick="checkCircuitChallenge()">Sprawdz ✓</button>
       ${hideDrop ? '' : `<button class="btn btn-reset" onclick="circuitLayers.forEach(l=>l.length=0);circuitOutputWire=null;armedPort=null;refreshCircuit();">🗑 Reset</button>`}
-      <button class="btn btn-hint" onclick="alert(window._curCh.hint||'')">💡 Podpowiedz</button>
+      <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
+        <button class="btn btn-hint" onclick="alert(window._curCh.hint||'')">💡 Podpowiedz</button>
       <div class="challenge-msg" id="ch-msg"></div>
     </div>`;
 
@@ -1383,6 +1578,12 @@ function checkCircuitChallenge() {
   const ch = window._curCh;
   if (!ch) return;
 
+  if (ch.type === 'sandbox') {
+    // sandbox challenges are exploration — clicking Sprawdz just marks it done
+    showSuccess(3);
+    return;
+  }
+
   if (ch.type === 'multi-input') {
     // check if all input values match target
     const target = ch.targetValues || {};
@@ -1428,9 +1629,8 @@ function checkCircuitChallenge() {
 
     if (allCorrect) {
       const gateCount = circuitLayers.flat().length;
-      let stars = 1;
-      if (!ch.maxGates || gateCount <= ch.maxGates) stars = 2;
-      if (!ch.maxGates || gateCount <= (ch.maxGates || 99) - 1) stars = 3;
+      // 3 stars when within the gate limit (or no limit); 2 stars if it works but exceeds limit.
+      const stars = (!ch.maxGates || gateCount <= ch.maxGates) ? 3 : 2;
       showSuccess(stars);
     } else {
       document.getElementById('ch-msg').className = 'challenge-msg fail';
@@ -1567,6 +1767,7 @@ function renderPredictChallenge(ch) {
       </div>
       <div class="challenge-controls">
         <button class="btn btn-check" onclick="window._predictCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
         <button class="btn btn-hint" onclick="alert(window._predictCh.hint||'')">💡 Podpowiedz</button>
         <div class="challenge-msg" id="ch-msg"></div>
       </div>`;
@@ -1700,6 +1901,7 @@ function renderFillChallenge(ch) {
       </div>
       <div class="challenge-controls">
         <button class="btn btn-check" onclick="window._fillCheck()">Sprawdz ✓</button>
+        <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
         <button class="btn btn-hint" onclick="alert(window._fillCh.hint||'')">💡 Podpowiedz</button>
         <div class="challenge-msg" id="ch-msg"></div>
       </div>`;
