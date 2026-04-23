@@ -127,6 +127,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .palette-block.b-state  { background: #4488ff22; border: 1px solid #4488ff55; }
 .palette-block.b-math   { background: #ffaa0022; border: 1px solid #ffaa0055; }
 .palette-block.b-motion { background: #00ddff22; border: 1px solid #00ddff55; }
+.hole { display: inline-block; min-width: 28px; padding: 0 6px; background: var(--bg4); border: 1px dashed var(--border2); border-radius: 4px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -296,27 +297,39 @@ function openStage(id) {
 }
 function emptyScript() { return []; }
 
-function labelHtml(def, slots) {
+function labelHtml(def, slots, opts = {}) {
   return def.label.replace(/§(\w+)/g, (_, key) => {
     const val = slots && key in slots ? slots[key] : def.slots?.[key]?.default ?? '';
-    return `<span class="slot" data-slot="${key}">${slotDisplay(val)}</span>`;
+    const locked = opts.lockLiterals && val !== null && val !== undefined && !(typeof val === 'object');
+    return `<span class="slot" data-slot="${key}"${locked ? ' data-locked="1"' : ''}>${slotDisplay(val)}</span>`;
   });
 }
 function slotDisplay(v) {
+  if (v === null || v === undefined) return '<span class="hole">?</span>';
   if (v && typeof v === 'object' && v.id) return BLOCKS[v.id]?.label.replace(/§\w+/g, '…') || '?';
   return String(v);
+}
+
+function currentChallenge() {
+  if (!STATE.stage || STATE.challenge == null) return null;
+  return (CHALLENGES[STATE.stage] || [])[STATE.challenge] || null;
+}
+function isFillInMode() {
+  const ch = currentChallenge();
+  return !!(ch && ch.type === 'fill-in-blank');
 }
 
 function renderScript() {
   const el = document.getElementById('script-area');
   el.innerHTML = '';
   STATE.script = STATE.script || emptyScript();
+  const opts = { lockLiterals: isFillInMode() };
   STATE.script.forEach((trig, ti) => {
     const def = BLOCKS[trig.id];
     if (!def) return;
     const head = document.createElement('div');
     head.className = `palette-block b-${def.cat}`;
-    head.innerHTML = labelHtml(def, trig.slots);
+    head.innerHTML = labelHtml(def, trig.slots, opts);
     head.__node = trig;
     el.appendChild(head);
     const body = document.createElement('div');
@@ -329,7 +342,7 @@ function renderScript() {
       if (!def2) return;
       const b = document.createElement('div');
       b.className = `palette-block b-${def2.cat}`;
-      b.innerHTML = labelHtml(def2, n.slots);
+      b.innerHTML = labelHtml(def2, n.slots, opts);
       b.__node = n;
       body.appendChild(b);
     });
@@ -404,6 +417,7 @@ scriptArea.addEventListener('dragover', e => {
 });
 scriptArea.addEventListener('drop', e => {
   e.preventDefault();
+  if (isFillInMode()) { return; /* no block-level drops in fill-in mode */ }
   const id = e.dataTransfer.getData('text/block-id');
   const def = BLOCKS[id]; if (!def) return;
   const targetBody = e.target.closest('[data-role="body"]');
@@ -424,6 +438,7 @@ scriptArea.addEventListener('drop', e => {
 scriptArea.addEventListener('click', e => {
   const slotEl = e.target.closest('.slot');
   if (!slotEl) return;
+  if (slotEl.dataset.locked === '1') return;
   const blockEl = slotEl.closest('.palette-block');
   const node = blockEl && blockEl.__node;
   if (!node) return;
@@ -472,6 +487,7 @@ scriptArea.addEventListener('contextmenu', e => {
   const block = e.target.closest('.palette-block');
   if (!block || !block.__node) return;
   e.preventDefault();
+  if (isFillInMode()) return;
   if (!confirm('Usunąć ten blok?')) return;
   removeNode(block.__node);
   renderScript();
