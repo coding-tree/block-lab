@@ -60,6 +60,24 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .tree-node.t-blue { border-color: #4488ff33; }
 .tree-node.t-blue.available { border-color: var(--blue); box-shadow: 0 0 20px -6px var(--blue); }
 .tree-node.t-blue.complete { border-color: var(--blue); background: #4488ff08; }
+
+#browser-view { flex-direction: column; padding: 24px 32px; overflow-y: auto; }
+.browser-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.browser-header .back {
+  padding: 6px 12px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); border-radius: 8px; cursor: pointer; font-family: var(--font);
+}
+.browser-header .back:hover { color: var(--text); border-color: var(--border2); }
+.browser-header h2 { font-weight: 800; font-size: 20px; }
+.challenge-item {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r);
+  margin-bottom: 10px; cursor: pointer; transition: all .15s;
+}
+.challenge-item:hover { border-color: var(--border2); transform: translateX(4px); }
+.challenge-item .ci-num { font-family: var(--mono); font-size: 11px; color: var(--muted); width: 24px; }
+.challenge-item .ci-title { flex: 1; font-weight: 600; font-size: 13px; }
+.challenge-item .ci-stars { font-size: 14px; letter-spacing: 1px; }
 </style>
 </head>
 <body>
@@ -72,6 +90,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   <div id="tree-view" class="view active"><div id="tree-root"></div></div>
   <div id="challenge-view" class="view">CHALLENGE</div>
   <div id="sandbox-view" class="view">SANDBOX</div>
+  <div id="browser-view" class="view"></div>
 </div>
 <script>
 const STAGES = [
@@ -84,6 +103,13 @@ const STAGES = [
 const TRACKS = {
   basics: { label: 'Basics', color: 'green' },
   actors: { label: 'Actors', color: 'blue' },
+};
+
+const CHALLENGES = {
+  pixels:   [],
+  tick:     [],
+  autonomy: [],
+  motion:   [],
 };
 
 const STATE = { view: 'tree-view', stage: null, challenge: null };
@@ -140,13 +166,45 @@ function renderTree() {
     });
   });
 }
-function openStage(id) { console.log('open stage', id); /* Task 4 */ }
+function openStage(id) {
+  STATE.stage = id;
+  const stage = STAGES.find(s => s.id === id);
+  const list = CHALLENGES[id] || [];
+  const p = stageProgress(id);
+  const el = document.getElementById('browser-view');
+  el.innerHTML = `
+    <div class="browser-header">
+      <button class="back" onclick="ps.backToTree()">← drzewo</button>
+      <h2>${stage.icon} ${stage.title}</h2>
+    </div>
+    <div id="challenge-list"></div>
+  `;
+  const listEl = el.querySelector('#challenge-list');
+  list.forEach((ch, i) => {
+    const stars = (p.stars && p.stars[i]) || 0;
+    const starsHtml = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
+    const div = document.createElement('div');
+    div.className = 'challenge-item';
+    div.innerHTML = `
+      <span class="ci-num">${String(i + 1).padStart(2, '0')}</span>
+      <span class="ci-title">${ch.title}</span>
+      <span class="ci-stars">${starsHtml}</span>
+    `;
+    div.addEventListener('click', () => openChallenge(id, i));
+    listEl.appendChild(div);
+  });
+  showView('browser-view');
+}
+function openChallenge(stageId, idx) { console.log('open', stageId, idx); /* Task 5 */ }
+function backToTree() { showView('tree-view'); renderTree(); }
 
 renderTree();
 
 window.ps = { STATE, showView };
 window.ps.renderTree = renderTree;
 window.ps.openStage = openStage;
+window.ps.openChallenge = openChallenge;
+window.ps.backToTree = backToTree;
 window.ps.progress = progress;
 window.ps.saveProgress = saveProgress;
 window.ps.stageProgress = stageProgress;
