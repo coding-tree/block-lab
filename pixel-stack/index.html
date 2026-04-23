@@ -254,6 +254,7 @@ function renderTree() {
       const complete = isStageComplete(s.id);
       const available = isStageAvailable(s.id);
       const locked = !complete && !available;
+      const p = stageProgress(s.id);
       const node = document.createElement('div');
       node.className = `tree-node t-${meta.color} ${complete ? 'complete' : available ? 'available' : 'locked'}`;
       node.innerHTML = `
@@ -261,6 +262,13 @@ function renderTree() {
         <div class="node-title">${s.title}</div>
         <div class="node-desc">${s.desc}</div>
       `;
+      const chList = CHALLENGES[s.id] || [];
+      const earned = (p.stars || []).reduce((a, b) => a + (b || 0), 0);
+      const total = chList.length * 3;
+      const starsLine = document.createElement('div');
+      starsLine.className = 'node-stars';
+      starsLine.textContent = `⭐ ${earned}/${total}`;
+      node.appendChild(starsLine);
       if (!locked) node.addEventListener('click', () => openStage(s.id));
       root.appendChild(node);
     });
@@ -678,7 +686,16 @@ function awardStar(ch, n) {
   updateStarsBadge();
 }
 
-function updateStarsBadge() { /* Task 17 */ }
+function updateStarsBadge() {
+  let earned = 0, total = 0;
+  for (const st of STAGES) {
+    const chs = CHALLENGES[st.id] || [];
+    total += chs.length * 3;
+    const pp = stageProgress(st.id);
+    earned += (pp.stars || []).reduce((a, b) => a + (b || 0), 0);
+  }
+  document.getElementById('stars-badge').textContent = `⭐ ${earned} / ${total}`;
+}
 
 document.getElementById('btn-run').addEventListener('click', () => {
   worldStop();
@@ -700,6 +717,7 @@ document.getElementById('btn-check').addEventListener('click', () => {
 });
 
 renderTree();
+updateStarsBadge();
 
 window.ps = { STATE, showView };
 window.ps.renderTree = renderTree;
