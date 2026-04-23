@@ -374,8 +374,10 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .port.armed { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 0 0 var(--cyan); animation: port-pulse 1.2s ease-in-out infinite; }
 .port.valid { border-color: var(--cyan); animation: port-pulse-outline 1.2s ease-in-out infinite; }
 .port.invalid { opacity: .25; pointer-events: none; }
+.port.missing { border-color: var(--red); border-style: dashed; animation: port-pulse-missing 1.6s ease-in-out infinite; }
 @keyframes port-pulse { 0%,100% { box-shadow: 0 0 0 0 #00ddff88; } 50% { box-shadow: 0 0 0 8px #00ddff00; } }
 @keyframes port-pulse-outline { 0%,100% { box-shadow: 0 0 0 0 #00ddff88; } 50% { box-shadow: 0 0 0 6px #00ddff00; } }
+@keyframes port-pulse-missing { 0%,100% { box-shadow: 0 0 0 0 #ff446688; } 50% { box-shadow: 0 0 0 6px #ff446600; } }
 
 /* ── WIRE BANNER ── */
 .wire-banner {
@@ -1365,6 +1367,20 @@ function renderCircuitChallenge(ch) {
   showView('challenge');
 }
 
+// Gate is "used" if something downstream consumes its output (another gate or the output bulb).
+function usedGateKeys() {
+  const used = new Set();
+  circuitLayers.forEach(layer => {
+    layer.forEach(gate => {
+      (gate.wires || []).forEach(w => {
+        if (w && w.layer >= 0) used.add(`${w.layer}-${w.idx}`);
+      });
+    });
+  });
+  if (circuitOutputWire) used.add(`${circuitOutputWire.layer}-${circuitOutputWire.idx}`);
+  return used;
+}
+
 function handlePortClick(target, ev) {
   if (ev) ev.stopPropagation();
   if (armedPort) {
@@ -1408,6 +1424,7 @@ function renderCircuitUI(ch, available, opts) {
   }).join('');
 
   // layer columns — each gate has ports
+  const usedKeys = usedGateKeys();
   let layersHtml = '';
   circuitLayers.forEach((layer, li) => {
     let gatesHtml = '';
@@ -1416,6 +1433,7 @@ function renderCircuitUI(ch, available, opts) {
       if (!def) return;
       const val = gate._output;
       const isArmedSrc = armedPort && armedPort.kind === 'gate' && armedPort.layer === li && armedPort.idx === gi;
+      const isUsed = usedKeys.has(`${li}-${gi}`);
 
       // input ports
       let portsHtml = '';
@@ -1425,6 +1443,7 @@ function renderCircuitUI(ch, available, opts) {
         let cls = '';
         if (armedPort) cls = isValidTarget(target) ? 'valid' : 'invalid';
         else if (occupied) cls = 'occupied';
+        else if (isUsed) cls = 'missing'; // gate feeds something downstream but this input is empty
         const pCls = def.inputs > 1 ? `p${p}` : '';
         portsHtml += `<div id="port-in-gate-${li}-${gi}-${p}" class="port port-in ${pCls} ${cls}" onclick="handlePortClick({kind:'gate',layer:${li},idx:${gi},port:${p}},event)"></div>`;
       }
@@ -1464,6 +1483,7 @@ function renderCircuitUI(ch, available, opts) {
   let outBulbCls = '';
   if (armedPort) outBulbCls = isValidTarget({kind:'output'}) ? 'valid' : 'invalid';
   else if (circuitOutputWire) outBulbCls = 'occupied';
+  else outBulbCls = 'missing'; // no wire to the bulb — always a problem
   let outputHtml = `<div class="output-bulb ${finalOutput?'on':''}">
     <div id="port-in-output" class="port port-in ${outBulbCls}" onclick="handlePortClick({kind:'output'},event)"></div>
     <div class="bulb-icon">${finalOutput?'💡':'⚫'}</div>
