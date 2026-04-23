@@ -277,6 +277,50 @@ CHALLENGES.tick = [
   }
 ];
 
+CHALLENGES.motion = [
+  {
+    title: 'Stała prędkość',
+    type: 'tests',
+    goal: 'Ustaw prędkość (2, 0) raz na starcie. Silnik dalej rusza sprite\'em automatycznie.',
+    initialSprites: [{ name: 's', color: '#00ff88', x: 0, y: 100, playerEdited: true }],
+    tests: [
+      { t: 60, label: 'x≈120', assert: 'Math.abs(s.x - 120) < 3' },
+      { t: 60, label: 'y=100', assert: 's.y === 100' }
+    ]
+  },
+  {
+    title: 'Grawitacja w dół',
+    type: 'tests',
+    goal: 'Ustaw grawitację (0, 0.2) na starcie. Sprite ma spadać coraz szybciej.',
+    initialSprites: [{ name: 's', color: '#ffaa00', x: 256, y: 0, playerEdited: true }],
+    tests: [
+      { t: 30,  label: 'spada',              assert: 's.y > 30' },
+      { t: 60,  label: 'dalej spada',        assert: 's.y > 150' },
+      { t: 60,  label: 'przyspiesza (vy>5)', assert: 's.vy > 5' }
+    ]
+  },
+  {
+    title: 'Pocisk w łuku',
+    type: 'tests',
+    goal: 'Wystrzel sprite\'a z prędkością (3, -4) i grawitacją (0, 0.2). Ma lądować w x > 180.',
+    initialSprites: [{ name: 's', color: '#ff55ff', x: 50, y: 280, playerEdited: true }],
+    tests: [
+      { t: 100, label: 'x > 180',  assert: 's.x > 180' },
+      { t: 20,  label: 'w górze',  assert: 's.y < 260' }
+    ]
+  },
+  {
+    title: 'Sprite leci po skosie',
+    type: 'tests',
+    goal: 'Ustaw stałą prędkość (1, 1) (po skosie w dół-prawo) i grawitację (0, 0). Po 100 tickach ma dotrzeć do (150, 150) startując z (50, 50).',
+    initialSprites: [{ name: 's', color: '#00ddff', x: 50, y: 50, playerEdited: true }],
+    tests: [
+      { t: 100, label: 'x≈150', assert: 'Math.abs(s.x - 150) < 3' },
+      { t: 100, label: 'y≈150', assert: 'Math.abs(s.y - 150) < 3' }
+    ]
+  }
+];
+
 CHALLENGES.autonomy = [
   {
     title: 'Dwa kwadraty, każdy w swoją stronę',
