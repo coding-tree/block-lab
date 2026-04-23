@@ -277,6 +277,61 @@ CHALLENGES.tick = [
   }
 ];
 
+CHALLENGES.autonomy = [
+  {
+    title: 'Dwa kwadraty, każdy w swoją stronę',
+    type: 'tests',
+    goal: 'Na scenie są 2 sprite\'y: "L" i "R". "L" porusza się sam. Zaprogramuj edytowanego sprite\'a "R" tak, żeby szedł w prawo.',
+    initialSprites: [
+      { name: 'L', color: '#4488ff', x: 256, y: 100, script: [
+        { id: 'on-start', body: [] },
+        { id: 'on-tick',  body: [{ id: 'move-by', slots: { dx: -1, dy: 0 } }] }
+      ]},
+      { name: 'R', color: '#ff55ff', x: 256, y: 200, playerEdited: true }
+    ],
+    tests: [
+      { t: 30, label: 'R w prawo (x > 280)', assert: 'sprites[1].x > 280' },
+      { t: 30, label: 'L nadal w lewo',      assert: 'sprites[0].x < 230' }
+    ]
+  },
+  {
+    title: 'Skocz do lewego górnego rogu',
+    type: 'tests',
+    goal: 'Edytowany sprite startuje w (400, 250). Napisz kod tak, żeby po jakimś czasie ustawił stan.done = 1 (użyj on-tick + set-state; wystarczy ustawić od razu, aby spełnić test).',
+    initialSprites: [{ name: 'me', color: '#00ff88', x: 400, y: 250, playerEdited: true }],
+    tests: [{ t: 60, label: 'stan.done=1', assert: 'sprites[0].state.done === 1' }]
+  },
+  {
+    title: 'Dwa sprite\'y, różne kolory',
+    type: 'tests',
+    goal: 'Sprite "A" od razu zmienia kolor na zielony. Zaprogramuj sprite\'a "B" tak, aby miał inny kolor niż startowy niebieski po 90 klatkach (wystarczy on-tick z set-color).',
+    initialSprites: [
+      { name: 'A', color: '#ff55ff', script: [
+        { id: 'on-tick', body: [{ id: 'set-color', slots: { c: '#00ff88' } }] }
+      ]},
+      { name: 'B', color: '#4488ff', playerEdited: true }
+    ],
+    tests: [
+      { t: 90, label: 'B zmienił kolor', assert: "sprites[1].color.toLowerCase() !== '#4488ff'" },
+      { t: 90, label: 'A jest zielony',  assert: "sprites[0].color.toLowerCase() === '#00ff88'" }
+    ]
+  },
+  {
+    title: 'Niezależny licznik',
+    type: 'tests',
+    goal: 'Na scenie 3 sprite\'y — dwa mają własne liczniki. Napisz kod trzeciego tak, żeby jego stan.n wynosiło 50 po 50 klatkach (zwiększaj co tick o 1).',
+    initialSprites: [
+      { name: 'a', color: '#ff5555', x: 50,  y: 50, script: [{ id: 'on-tick', body: [{ id: 'set-state', slots: { field: 'n', val: { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 2 } } } }]}]},
+      { name: 'b', color: '#5555ff', x: 150, y: 50, script: [{ id: 'on-tick', body: [{ id: 'set-state', slots: { field: 'n', val: { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 3 } } } }]}]},
+      { name: 'c', color: '#00ff88', x: 250, y: 50, playerEdited: true }
+    ],
+    tests: [
+      { t: 50, label: 'sprites[2].state.n === 50', assert: 'sprites[2].state.n === 50' },
+      { t: 50, label: 'sprites[0].state.n === 100', assert: 'sprites[0].state.n === 100' }
+    ]
+  }
+];
+
 CHALLENGES.pixels = [
   {
     title: 'Postaw kulkę w (100, 80)',
@@ -816,12 +871,21 @@ function stepOnce() {
   WORLD.tick++;
 }
 
-function compileActiveSprite() {
-  if (!STATE.stage || STATE.challenge == null) return makeSprite();
+function compileSpritesForChallenge() {
+  if (!STATE.stage || STATE.challenge == null) return [makeSprite()];
   const ch = CHALLENGES[STATE.stage][STATE.challenge];
-  const init = (ch && ch.initialSprites && ch.initialSprites[0]) || { name: 's', color: '#00ff88', w: 16, h: 16 };
-  return makeSprite({ ...init, script: STATE.script });
+  if (!ch) return [makeSprite()];
+  const inits = ch.initialSprites || [{ name: 's0', color: '#00ff88' }];
+  const hasExplicitPlayer = inits.some(i => i.playerEdited);
+  return inits.map((init, i) => {
+    const isPlayer = hasExplicitPlayer ? !!init.playerEdited : i === 0;
+    const script = isPlayer ? STATE.script : (init.script || []);
+    return makeSprite({ ...init, script });
+  });
 }
+
+// Backward-compat alias for single-sprite paths.
+function compileActiveSprite() { return compileSpritesForChallenge()[0]; }
 
 function runHeadless(maxTicks, sprites) {
   worldReset(sprites);
@@ -850,7 +914,7 @@ function runTests(ch) {
   const results = [];
   for (const test of ch.tests || []) {
     const maxT = test.t || 0;
-    const env = runHeadless(maxT, [compileActiveSprite()]);
+    const env = runHeadless(maxT, compileSpritesForChallenge());
     results.push({ label: test.label || ('t=' + maxT), pass: evalAssert(test.assert, env) });
   }
   return results;
@@ -893,12 +957,12 @@ function updateStarsBadge() {
 
 document.getElementById('btn-run').addEventListener('click', () => {
   worldStop();
-  worldReset([compileActiveSprite()]);
+  worldReset(compileSpritesForChallenge());
   worldStart();
 });
 document.getElementById('btn-reset').addEventListener('click', () => {
   worldStop();
-  worldReset([compileActiveSprite()]);
+  worldReset(compileSpritesForChallenge());
   drawScene(WORLD.sprites);
 });
 document.getElementById('btn-check').addEventListener('click', () => {
@@ -935,6 +999,7 @@ window.ps.worldStart = worldStart;
 window.ps.worldStop = worldStop;
 window.ps.stepOnce = stepOnce;
 window.ps.compileActiveSprite = compileActiveSprite;
+window.ps.compileSpritesForChallenge = compileSpritesForChallenge;
 window.ps.runHeadless = runHeadless;
 window.ps.evalAssert = evalAssert;
 window.ps.runTests = runTests;
