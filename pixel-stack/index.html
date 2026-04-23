@@ -218,6 +218,65 @@ const CHALLENGES = {
   motion:   [],
 };
 
+CHALLENGES.tick = [
+  {
+    title: 'Porusz się w prawo',
+    type: 'fill-in-blank',
+    goal: 'Kulka ma sunąć w prawo o 1 piksel co klatkę. Użyj on-tick + move-by.',
+    initialSprites: [{ color: '#00ff88' }],
+    initialScript: [
+      { id: 'on-start', body: [{ id: 'set-pos', slots: { x: 0, y: 80 } }] },
+      { id: 'on-tick',  body: [{ id: 'move-by', slots: { dx: null, dy: null } }] }
+    ],
+    tests: [
+      { t: 30, label: 'po 30 tickach x≈30', assert: 'Math.abs(s.x - 30) < 1.5' },
+      { t: 30, label: 'y bez zmian',        assert: 's.y === 80' }
+    ]
+  },
+  {
+    title: 'Licznik w stanie',
+    type: 'fill-in-blank',
+    goal: 'Co klatkę zwiększ stan.n o 1. Po 100 klatkach ma być 100. Upuść wyrażenie (stan.n + 1) w dziurę.',
+    initialSprites: [{ color: '#bb66ff' }],
+    initialScript: [
+      { id: 'on-start', body: [{ id: 'set-state', slots: { field: 'n', val: 0 } }] },
+      { id: 'on-tick',  body: [{ id: 'set-state', slots: { field: 'n', val: null } }] }
+    ],
+    tests: [{ t: 100, label: 'stan.n === 100', assert: 's.state.n === 100' }]
+  },
+  {
+    title: 'Start raz, tick stale',
+    type: 'fill-in-blank',
+    goal: 'Ustaw pozycję (200, 160) raz na starcie, a kolor losowo co klatkę. Użyj losowe(0..255) × 3 dla kolorów (tu wystarczy jakikolwiek kolor).',
+    initialSprites: [{ color: '#ffffff' }],
+    initialScript: [
+      { id: 'on-start', body: [{ id: 'set-pos', slots: { x: null, y: null } }] },
+      { id: 'on-tick',  body: [{ id: 'set-color', slots: { c: null } }] }
+    ],
+    tests: [
+      { t: 1, label: 'pozycja po tick 1',       assert: 's.x === 200 && s.y === 160' },
+      { t: 5, label: 'pozycja nadal taka sama', assert: 's.x === 200 && s.y === 160' }
+    ]
+  },
+  {
+    title: 'Pozycja rośnie od czasu',
+    type: 'fill-in-blank',
+    goal: 'Co klatkę zwiększ stan.t o 1, i ustaw x = stan.t × 2. Upuść wyrażenia w dziury.',
+    initialSprites: [{ color: '#00ddff' }],
+    initialScript: [
+      { id: 'on-start', body: [{ id: 'set-state', slots: { field: 't', val: 0 } }] },
+      { id: 'on-tick',  body: [
+        { id: 'set-state', slots: { field: 't', val: null } },
+        { id: 'set-pos',   slots: { x: null, y: 100 } }
+      ]}
+    ],
+    tests: [
+      { t: 50, label: 'stan.t=50', assert: 's.state.t === 50' },
+      { t: 50, label: 'x=100',     assert: 's.x === 100' }
+    ]
+  }
+];
+
 CHALLENGES.pixels = [
   {
     title: 'Postaw kulkę w (100, 80)',
