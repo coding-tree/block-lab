@@ -128,6 +128,12 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .palette-block.b-math   { background: #ffaa0022; border: 1px solid #ffaa0055; }
 .palette-block.b-motion { background: #00ddff22; border: 1px solid #00ddff55; }
 .hole { display: inline-block; min-width: 28px; padding: 0 6px; background: var(--bg4); border: 1px dashed var(--border2); border-radius: 4px; color: var(--muted); }
+.nested { display: inline-block; padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 11px; }
+.nested.b-draw   { background: #ff55ff33; }
+.nested.b-loop   { background: #00ff8833; }
+.nested.b-state  { background: #4488ff33; }
+.nested.b-math   { background: #ffaa0033; }
+.nested.b-motion { background: #00ddff33; }
 </style>
 </head>
 <body>
@@ -359,17 +365,56 @@ function openStage(id) {
 }
 function emptyScript() { return []; }
 
-function labelHtml(def, slots, opts = {}) {
-  return def.label.replace(/§(\w+)/g, (_, key) => {
+function appendLabelParts(parent, def, slots, opts, ownerNode) {
+  const pattern = def.label;
+  let cursor = 0;
+  const re = /§(\w+)/g;
+  let match;
+  while ((match = re.exec(pattern)) !== null) {
+    const before = pattern.slice(cursor, match.index);
+    if (before) parent.appendChild(document.createTextNode(before));
+    const key = match[1];
     const val = slots && key in slots ? slots[key] : def.slots?.[key]?.default ?? '';
+    const slotEl = document.createElement('span');
+    slotEl.className = 'slot';
+    slotEl.dataset.slot = key;
+    slotEl.__node = ownerNode; // every slot knows its owning node
     const locked = opts.lockLiterals && val !== null && val !== undefined && !(typeof val === 'object');
-    return `<span class="slot" data-slot="${key}"${locked ? ' data-locked="1"' : ''}>${slotDisplay(val)}</span>`;
-  });
+    if (locked) slotEl.dataset.locked = '1';
+    appendSlotContent(slotEl, val, opts);
+    parent.appendChild(slotEl);
+    cursor = re.lastIndex;
+  }
+  const rest = pattern.slice(cursor);
+  if (rest) parent.appendChild(document.createTextNode(rest));
 }
-function slotDisplay(v) {
-  if (v === null || v === undefined) return '<span class="hole">?</span>';
-  if (v && typeof v === 'object' && v.id) return BLOCKS[v.id]?.label.replace(/§\w+/g, '…') || '?';
-  return String(v);
+
+function appendSlotContent(parent, val, opts) {
+  if (val === null || val === undefined) {
+    const hole = document.createElement('span');
+    hole.className = 'hole';
+    hole.textContent = '?';
+    parent.appendChild(hole);
+    return;
+  }
+  if (val && typeof val === 'object' && val.id) {
+    const def = BLOCKS[val.id];
+    if (!def) { parent.appendChild(document.createTextNode('?')); return; }
+    const nestedEl = document.createElement('span');
+    nestedEl.className = `nested b-${def.cat}`;
+    appendLabelParts(nestedEl, def, val.slots || {}, opts, val);
+    parent.appendChild(nestedEl);
+    return;
+  }
+  parent.appendChild(document.createTextNode(String(val)));
+}
+
+function renderBlockEl(node, def, opts) {
+  const bl = document.createElement('div');
+  bl.className = `palette-block b-${def.cat}`;
+  bl.__node = node;
+  appendLabelParts(bl, def, node.slots || {}, opts, node);
+  return bl;
 }
 
 function currentChallenge() {
@@ -389,11 +434,7 @@ function renderScript() {
   STATE.script.forEach((trig, ti) => {
     const def = BLOCKS[trig.id];
     if (!def) return;
-    const head = document.createElement('div');
-    head.className = `palette-block b-${def.cat}`;
-    head.innerHTML = labelHtml(def, trig.slots, opts);
-    head.__node = trig;
-    el.appendChild(head);
+    el.appendChild(renderBlockEl(trig, def, opts));
     const body = document.createElement('div');
     body.className = 'script-body';
     body.dataset.role = 'body';
@@ -402,11 +443,7 @@ function renderScript() {
     (trig.body || []).forEach((n) => {
       const def2 = BLOCKS[n.id];
       if (!def2) return;
-      const b = document.createElement('div');
-      b.className = `palette-block b-${def2.cat}`;
-      b.innerHTML = labelHtml(def2, n.slots, opts);
-      b.__node = n;
-      body.appendChild(b);
+      body.appendChild(renderBlockEl(n, def2, opts));
     });
     el.appendChild(body);
   });
@@ -479,9 +516,28 @@ scriptArea.addEventListener('dragover', e => {
 });
 scriptArea.addEventListener('drop', e => {
   e.preventDefault();
-  if (isFillInMode()) { return; /* no block-level drops in fill-in mode */ }
   const id = e.dataTransfer.getData('text/block-id');
   const def = BLOCKS[id]; if (!def) return;
+
+  // Expression → expression slot (works in both fill-in-blank and normal modes)
+  if (def.type === 'expression') {
+    const slot = e.target.closest('.slot');
+    if (!slot) return;
+    if (slot.dataset.locked === '1') return;
+    const node = slot.__node;
+    if (!node) return;
+    const slotKey = slot.dataset.slot;
+    const parentDef = BLOCKS[node.id];
+    const slotDef = parentDef && parentDef.slots && parentDef.slots[slotKey];
+    if (!slotDef || slotDef.type !== 'expression') return;
+    node.slots = node.slots || {};
+    node.slots[slotKey] = { id, slots: makeDefaultSlots(def) };
+    renderScript();
+    return;
+  }
+
+  // Trigger / statement drops are block-level — disabled in fill-in-blank mode
+  if (isFillInMode()) return;
   const targetBody = e.target.closest('[data-role="body"]');
   const defaults = makeDefaultSlots(def);
   if (def.type === 'trigger') {
@@ -492,7 +548,7 @@ scriptArea.addEventListener('drop', e => {
     const ti = Number(targetBody.dataset.triggerIdx);
     STATE.script[ti].body.push({ id, slots: defaults });
   } else {
-    return; // expressions handled in Task 20 (Phase 6)
+    return;
   }
   renderScript();
 });
@@ -501,15 +557,15 @@ scriptArea.addEventListener('click', e => {
   const slotEl = e.target.closest('.slot');
   if (!slotEl) return;
   if (slotEl.dataset.locked === '1') return;
-  const blockEl = slotEl.closest('.palette-block');
-  const node = blockEl && blockEl.__node;
+  const node = slotEl.__node;
   if (!node) return;
   const def = BLOCKS[node.id];
   const slotKey = slotEl.dataset.slot;
   const slotDef = def.slots?.[slotKey];
   if (!slotDef) return;
-  // nested block in slot — not a literal, skip for now
-  if (node.slots && typeof node.slots[slotKey] === 'object' && node.slots[slotKey] !== null) return;
+  // nested block in slot — not a literal, skip (right-click to revert)
+  const cur = node.slots ? node.slots[slotKey] : undefined;
+  if (cur && typeof cur === 'object') return;
   openSlotEditor(slotEl, node, slotKey, slotDef);
 });
 
@@ -546,10 +602,28 @@ function openSlotEditor(slotEl, node, key, def) {
 }
 
 scriptArea.addEventListener('contextmenu', e => {
+  // Right-click on a slot that currently holds a nested expression → revert to default literal.
+  const slot = e.target.closest('.slot');
+  if (slot && slot.dataset.locked !== '1') {
+    const node = slot.__node;
+    if (node) {
+      const slotKey = slot.dataset.slot;
+      const cur = node.slots ? node.slots[slotKey] : undefined;
+      if (cur && typeof cur === 'object') {
+        e.preventDefault();
+        const def = BLOCKS[node.id];
+        const slotDef = def && def.slots && def.slots[slotKey];
+        node.slots[slotKey] = slotDef ? slotDef.default : 0;
+        renderScript();
+        return;
+      }
+    }
+  }
+  // Block-level removal (not allowed in fill-in-blank mode).
+  if (isFillInMode()) return;
   const block = e.target.closest('.palette-block');
   if (!block || !block.__node) return;
   e.preventDefault();
-  if (isFillInMode()) return;
   if (!confirm('Usunąć ten blok?')) return;
   removeNode(block.__node);
   renderScript();
