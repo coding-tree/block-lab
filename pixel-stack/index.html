@@ -362,6 +362,7 @@ function openChallenge(stageId, idx) {
   STATE.challenge = idx;
   const ch = (CHALLENGES[stageId] || [])[idx];
   if (!ch) { console.warn('no challenge'); return; }
+  worldStop();
   document.getElementById('ch-title').textContent = ch.title;
   const stars = (stageProgress(stageId).stars || [])[idx] || 0;
   document.getElementById('ch-stars').textContent = '⭐'.repeat(stars) + '☆'.repeat(3 - stars);
@@ -570,6 +571,58 @@ function runTrigger(trigId, sprite, globals) {
   }
 }
 
+const WORLD = { sprites: [], globals: {}, running: false, tick: 0, raf: 0 };
+
+function worldReset(sprites) {
+  // Fresh sprite copies (do NOT mutate the originals passed in)
+  WORLD.sprites = sprites.map(s => ({ ...s, _started: false, state: {}, vx: 0, vy: 0, gx: 0, gy: 0 }));
+  WORLD.globals = {};
+  WORLD.tick = 0;
+}
+
+function worldStart() {
+  if (WORLD.running) return;
+  WORLD.running = true;
+  const loop = () => {
+    if (!WORLD.running) return;
+    stepOnce();
+    drawScene(WORLD.sprites);
+    WORLD.raf = requestAnimationFrame(loop);
+  };
+  WORLD.raf = requestAnimationFrame(loop);
+}
+
+function worldStop() { WORLD.running = false; cancelAnimationFrame(WORLD.raf); }
+
+function stepOnce() {
+  for (const s of WORLD.sprites) {
+    if (!s.alive) continue;
+    if (!s._started) { runTrigger('on-start', s, WORLD.globals); s._started = true; }
+    runTrigger('on-tick', s, WORLD.globals);
+    s.vx += s.gx; s.vy += s.gy;
+    s.x += s.vx; s.y += s.vy;
+  }
+  WORLD.tick++;
+}
+
+function compileActiveSprite() {
+  if (!STATE.stage || STATE.challenge == null) return makeSprite();
+  const ch = CHALLENGES[STATE.stage][STATE.challenge];
+  const init = (ch && ch.initialSprites && ch.initialSprites[0]) || { name: 's', color: '#00ff88', w: 16, h: 16 };
+  return makeSprite({ ...init, script: STATE.script });
+}
+
+document.getElementById('btn-run').addEventListener('click', () => {
+  worldStop();
+  worldReset([compileActiveSprite()]);
+  worldStart();
+});
+document.getElementById('btn-reset').addEventListener('click', () => {
+  worldStop();
+  worldReset([compileActiveSprite()]);
+  drawScene(WORLD.sprites);
+});
+
 renderTree();
 
 window.ps = { STATE, showView };
@@ -588,6 +641,12 @@ window.ps.drawScene = drawScene;
 window.ps.evalExpr = evalExpr;
 window.ps.runStatement = runStatement;
 window.ps.runTrigger = runTrigger;
+window.ps.WORLD = WORLD;
+window.ps.worldReset = worldReset;
+window.ps.worldStart = worldStart;
+window.ps.worldStop = worldStop;
+window.ps.stepOnce = stepOnce;
+window.ps.compileActiveSprite = compileActiveSprite;
 </script>
 </body>
 </html>
