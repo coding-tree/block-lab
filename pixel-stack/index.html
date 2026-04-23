@@ -511,6 +511,65 @@ function drawScene(sprites) {
   });
 }
 
+function evalExpr(node, ctx) {
+  if (node == null) return 0;
+  if (typeof node === 'number') return node;
+  if (typeof node === 'string') {
+    // numeric-looking strings become numbers (UI stores expression literals as strings or numbers)
+    if (node !== '' && !isNaN(Number(node))) return Number(node);
+    return node;
+  }
+  const def = BLOCKS[node.id];
+  if (!def) return 0;
+  switch (node.id) {
+    case 'num':    return Number(node.slots.n);
+    case 'my-x':   return ctx.sprite.x;
+    case 'my-y':   return ctx.sprite.y;
+    case 'random': {
+      const min = Number(evalExpr(node.slots.min, ctx));
+      const max = Number(evalExpr(node.slots.max, ctx));
+      return min + Math.random() * (max - min);
+    }
+    case 'op': {
+      const a = Number(evalExpr(node.slots.a, ctx));
+      const b = Number(evalExpr(node.slots.b, ctx));
+      switch (node.slots.op) {
+        case '+': return a + b;
+        case '-': return a - b;
+        case '*': return a * b;
+        case '/': return b === 0 ? 0 : a / b;
+        case '%': return b === 0 ? 0 : a % b;
+      }
+      return 0;
+    }
+    case 'get-state': return ctx.sprite.state[node.slots.field] ?? 0;
+  }
+  return 0;
+}
+
+function runStatement(node, ctx) {
+  const s = ctx.sprite;
+  switch (node.id) {
+    case 'set-pos':     s.x = Number(evalExpr(node.slots.x, ctx)); s.y = Number(evalExpr(node.slots.y, ctx)); break;
+    case 'set-size':    s.w = Number(evalExpr(node.slots.w, ctx)); s.h = Number(evalExpr(node.slots.h, ctx)); break;
+    case 'set-color':   s.color = node.slots.c; break;
+    case 'set-state':   s.state[node.slots.field] = evalExpr(node.slots.val, ctx); break;
+    case 'set-global':  ctx.globals[node.slots.field] = evalExpr(node.slots.val, ctx); break;
+    case 'move-by':     s.x += Number(evalExpr(node.slots.dx, ctx)); s.y += Number(evalExpr(node.slots.dy, ctx)); break;
+    case 'set-vel':     s.vx = Number(evalExpr(node.slots.vx, ctx)); s.vy = Number(evalExpr(node.slots.vy, ctx)); break;
+    case 'set-gravity': s.gx = Number(evalExpr(node.slots.gx, ctx)); s.gy = Number(evalExpr(node.slots.gy, ctx)); break;
+  }
+}
+
+function runBody(body, ctx) { for (const n of body || []) runStatement(n, ctx); }
+
+function runTrigger(trigId, sprite, globals) {
+  const ctx = { sprite, globals };
+  for (const trig of sprite.script) {
+    if (trig.id === trigId) runBody(trig.body, ctx);
+  }
+}
+
 renderTree();
 
 window.ps = { STATE, showView };
@@ -526,6 +585,9 @@ window.ps.saveProgress = saveProgress;
 window.ps.stageProgress = stageProgress;
 window.ps.makeSprite = makeSprite;
 window.ps.drawScene = drawScene;
+window.ps.evalExpr = evalExpr;
+window.ps.runStatement = runStatement;
+window.ps.runTrigger = runTrigger;
 </script>
 </body>
 </html>
