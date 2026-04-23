@@ -647,6 +647,40 @@ window.ps.worldStart = worldStart;
 window.ps.worldStop = worldStop;
 window.ps.stepOnce = stepOnce;
 window.ps.compileActiveSprite = compileActiveSprite;
+
+function __dev_tests() {
+  const fail = [], pass = [];
+  const t = (name, cond) => (cond ? pass : fail).push(name);
+
+  const s1 = makeSprite({ x: 7, y: 3 });
+  t('num literal',   evalExpr({ id: 'num', slots: { n: 5 } }, { sprite: s1 }) === 5);
+  t('op add',        evalExpr({ id: 'op', slots: { a: 2, op: '+', b: 3 } }, { sprite: s1 }) === 5);
+  t('op div zero',   evalExpr({ id: 'op', slots: { a: 10, op: '/', b: 0 } }, { sprite: s1 }) === 0);
+  t('my-x',          evalExpr({ id: 'my-x' }, { sprite: s1 }) === 7);
+
+  const s2 = makeSprite();
+  runStatement({ id: 'set-pos', slots: { x: 100, y: 80 } }, { sprite: s2 });
+  t('set-pos', s2.x === 100 && s2.y === 80);
+  runStatement({ id: 'set-state', slots: { field: 'hp', val: 3 } }, { sprite: s2 });
+  t('set-state', s2.state.hp === 3);
+
+  worldReset([ makeSprite({ x: 0, y: 0, script: [
+    { id: 'on-start', body: [ { id: 'set-pos', slots: { x: 0, y: 0 } } ] },
+    { id: 'on-tick',  body: [ { id: 'move-by', slots: { dx: 1, dy: 0 } } ] },
+  ]}) ]);
+  for (let i = 0; i < 10; i++) stepOnce();
+  t('tick loop moves sprite', WORLD.sprites[0].x === 10);
+
+  console.log('%cPixelStack dev tests', 'font-weight:bold', `${pass.length} pass, ${fail.length} fail`);
+  pass.forEach(n => console.log('  ✅', n));
+  fail.forEach(n => console.warn('  ❌', n));
+  return { pass: pass.length, fail: fail.length };
+}
+
+if (new URLSearchParams(location.search).get('dev') === '1') {
+  window.addEventListener('load', () => { setTimeout(__dev_tests, 100); });
+}
+window.ps.__dev_tests = __dev_tests;
 </script>
 </body>
 </html>
