@@ -467,6 +467,24 @@ function openSlotEditor(slotEl, node, key, def) {
   input.addEventListener('keydown', ev => { if (ev.key === 'Enter') input.blur(); if (ev.key === 'Escape') { ev.preventDefault(); renderScript(); } });
 }
 
+scriptArea.addEventListener('contextmenu', e => {
+  const block = e.target.closest('.palette-block');
+  if (!block || !block.__node) return;
+  e.preventDefault();
+  if (!confirm('Usunąć ten blok?')) return;
+  removeNode(block.__node);
+  renderScript();
+});
+
+function removeNode(target) {
+  for (let ti = 0; ti < STATE.script.length; ti++) {
+    const trig = STATE.script[ti];
+    if (trig === target) { STATE.script.splice(ti, 1); return; }
+    const bi = (trig.body || []).indexOf(target);
+    if (bi >= 0) { trig.body.splice(bi, 1); return; }
+  }
+}
+
 renderTree();
 
 window.ps = { STATE, showView };
