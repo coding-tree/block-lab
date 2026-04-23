@@ -420,6 +420,53 @@ scriptArea.addEventListener('drop', e => {
   renderScript();
 });
 
+scriptArea.addEventListener('click', e => {
+  const slotEl = e.target.closest('.slot');
+  if (!slotEl) return;
+  const blockEl = slotEl.closest('.palette-block');
+  const node = blockEl && blockEl.__node;
+  if (!node) return;
+  const def = BLOCKS[node.id];
+  const slotKey = slotEl.dataset.slot;
+  const slotDef = def.slots?.[slotKey];
+  if (!slotDef) return;
+  // nested block in slot — not a literal, skip for now
+  if (node.slots && typeof node.slots[slotKey] === 'object' && node.slots[slotKey] !== null) return;
+  openSlotEditor(slotEl, node, slotKey, slotDef);
+});
+
+function openSlotEditor(slotEl, node, key, def) {
+  const cur = node.slots ? node.slots[key] : def.default;
+  let input;
+  if (def.type === 'choice') {
+    input = document.createElement('select');
+    def.options.forEach(o => {
+      const opt = document.createElement('option'); opt.value = o; opt.textContent = o;
+      if (o === cur) opt.selected = true;
+      input.appendChild(opt);
+    });
+  } else if (def.type === 'color') {
+    input = document.createElement('input'); input.type = 'color'; input.value = cur;
+  } else {
+    input = document.createElement('input'); input.type = 'text'; input.value = cur;
+  }
+  input.style.cssText = 'font-family:var(--mono);font-size:12px;padding:2px 6px;width:90px;background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:4px;';
+  slotEl.innerHTML = '';
+  slotEl.appendChild(input);
+  input.focus();
+  if (input.select) try { input.select(); } catch {}
+  const commit = () => {
+    let v = input.value;
+    if (def.type === 'number') v = Number(v);
+    else if (def.type === 'expression') v = isNaN(Number(v)) || v === '' ? v : Number(v);
+    if (!node.slots) node.slots = {};
+    node.slots[key] = v;
+    renderScript();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') input.blur(); if (ev.key === 'Escape') { ev.preventDefault(); renderScript(); } });
+}
+
 renderTree();
 
 window.ps = { STATE, showView };
