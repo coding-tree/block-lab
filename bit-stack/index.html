@@ -343,11 +343,21 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 }
 .wire-layer .wire {
   fill: none; stroke: var(--border2); stroke-width: 2;
+  pointer-events: stroke; cursor: pointer;
   transition: stroke .15s, stroke-width .15s, filter .2s;
 }
 .wire-layer .wire.active {
   stroke: var(--yellow); stroke-width: 2.5;
   filter: drop-shadow(0 0 3px #ffd93d88);
+}
+.wire-layer .wire:hover {
+  stroke: var(--red); stroke-width: 3.5;
+  filter: drop-shadow(0 0 4px #ff446688);
+}
+/* wider invisible path layered underneath for easier click-hit on thin wires */
+.wire-layer .wire-hit {
+  fill: none; stroke: transparent; stroke-width: 14;
+  pointer-events: stroke; cursor: pointer;
 }
 
 /* ── PORTS ── */
@@ -1339,10 +1349,21 @@ function drawWires() {
     const y2 = tr.top + tr.height/2 - svgRect.top + circuit.scrollTop;
     const dx = Math.max(30, Math.abs(x2 - x1) * 0.5);
     const d = `M ${x1},${y1} C ${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
-    return `<path class="wire${active?' active':''}" d="${d}"></path>`;
+    const clickAttr = tgt.kind === 'output'
+      ? `onclick="handleWireClick('output')"`
+      : `onclick="handleWireClick('gate',${tgt.layer},${tgt.idx},${tgt.port})"`;
+    // emit an invisible wider hit target first so thin wires are easy to click,
+    // then the visible stroke on top.
+    return `<path class="wire-hit" d="${d}" ${clickAttr}></path>`
+         + `<path class="wire${active?' active':''}" d="${d}" ${clickAttr}><title>Kliknij aby odlaczyc</title></path>`;
   }).join('');
 
   svg.innerHTML = paths;
+}
+
+function handleWireClick(kind, layer, idx, port) {
+  if (kind === 'output') disconnectTarget({ kind: 'output' });
+  else disconnectTarget({ kind: 'gate', layer, idx, port });
 }
 
 // ════════════════════════════════════════════════════
