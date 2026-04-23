@@ -260,6 +260,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .btn-reset:hover { color: var(--text); border-color: var(--border2); }
 .btn-hint { background: var(--bg3); color: var(--orange); border: 1px solid #ffaa0033; }
 .btn-hint:hover { background: #ffaa0011; }
+.btn-anim { background: var(--bg3); color: var(--cyan); border: 1px solid #00ddff33; }
+.btn-anim:hover { background: #00ddff11; }
 .challenge-msg { flex: 1; font-size: 13px; font-weight: 600; }
 .challenge-msg.success { color: var(--green); }
 .challenge-msg.fail { color: var(--red); }
@@ -696,6 +698,7 @@ function isTopicAvailable(id) {
 //  VIEWS
 // ════════════════════════════════════════════════════
 function showView(name) {
+  if (_animationTimer) stopAnimation();
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
 
@@ -802,6 +805,7 @@ function openTopic(id) {
 //  CHALLENGE
 // ════════════════════════════════════════════════════
 function openChallenge(topicId, idx) {
+  if (_animationTimer) stopAnimation();
   currentTopic = TOPICS.find(t => t.id === topicId);
   currentChallengeIdx = idx;
   currentChallenge = currentTopic.challenges[idx];
@@ -1408,6 +1412,40 @@ function renderCircuitChallenge(ch) {
   showView('challenge');
 }
 
+// Cycle through every combination of input values at fixed cadence so kids
+// can watch the circuit light up through its full behavior.
+let _animationTimer = null;
+const ANIMATION_STEP_MS = 900;
+
+function toggleAnimation() {
+  if (_animationTimer) stopAnimation();
+  else startAnimation();
+}
+
+function startAnimation() {
+  stopAnimation();
+  const n = circuitInputs.length;
+  if (n === 0) return;
+  const total = 1 << n;
+  let step = 0;
+  const tick = () => {
+    circuitInputs.forEach((name, bit) => {
+      circuitValues[name] = (step >> (n - 1 - bit)) & 1;
+    });
+    refreshCircuit();
+    step = (step + 1) % total;
+  };
+  tick();
+  _animationTimer = setInterval(tick, ANIMATION_STEP_MS);
+}
+
+function stopAnimation() {
+  if (!_animationTimer) return;
+  clearInterval(_animationTimer);
+  _animationTimer = null;
+  refreshCircuit();
+}
+
 function addLayer() {
   circuitLayers.push([]);
   refreshCircuit();
@@ -1509,15 +1547,16 @@ function renderCircuitUI(ch, available, opts) {
 
   // inputs column — each switch also has an output port
   const isSandbox = ch.type === 'sandbox';
+  const animating = !!_animationTimer;
   let inputsHtml = circuitInputs.map((name, i) => {
     const isArmedSrc = armedPort && armedPort.kind === 'input' && armedPort.idx === i;
-    const switchClick = lockInputs
+    const switchClick = (lockInputs || animating)
       ? ''
       : `onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;refreshCircuit();"`;
     const rmBtn = (isSandbox && circuitInputs.length > 1)
       ? `<button class="gate-rm" onclick="event.stopPropagation(); removeInput(${i});" title="Usun wejscie">✕</button>`
       : '';
-    return `<div class="input-switch ${circuitValues[name]?'on':''}" ${lockInputs ? 'style="cursor:default;opacity:.85;"' : switchClick}>
+    return `<div class="input-switch ${circuitValues[name]?'on':''}" ${(lockInputs || animating) ? 'style="cursor:default;opacity:.85;"' : switchClick}>
       ${rmBtn}
       <div class="sw-label">${name}</div>
       <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
@@ -1643,6 +1682,7 @@ function renderCircuitUI(ch, available, opts) {
     <div class="challenge-controls">
       <button class="btn btn-check" onclick="checkCircuitChallenge()">Sprawdz ✓</button>
       ${hideDrop ? '' : `<button class="btn btn-reset" onclick="circuitLayers.forEach(l=>l.length=0);circuitOutputWire=null;armedPort=null;refreshCircuit();">🗑 Reset</button>`}
+      <button class="btn btn-anim" onclick="toggleAnimation()">${animating ? '⏸ Stop' : '▶ Animuj'}</button>
       <button class="btn btn-hint" onclick="showTaskModal()">📋 Zadanie</button>
         <button class="btn btn-hint" onclick="alert(window._curCh.hint||'')">💡 Podpowiedz</button>
       <div class="challenge-msg" id="ch-msg"></div>
