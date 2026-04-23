@@ -482,6 +482,22 @@ function progress() {
   catch { return {}; }
 }
 function saveProgress(p) { localStorage.setItem('pixelstack-progress', JSON.stringify(p)); }
+
+function saveCurrentScript() {
+  if (!STATE.stage || STATE.challenge == null) return;
+  try {
+    const all = JSON.parse(localStorage.getItem('pixelstack-scripts') || '{}');
+    all[STATE.stage] = all[STATE.stage] || {};
+    all[STATE.stage][STATE.challenge] = STATE.script;
+    localStorage.setItem('pixelstack-scripts', JSON.stringify(all));
+  } catch (e) { console.warn('save script failed:', e); }
+}
+function loadSavedScript(stageId, idx) {
+  try {
+    const all = JSON.parse(localStorage.getItem('pixelstack-scripts') || '{}');
+    return all?.[stageId]?.[idx] || null;
+  } catch { return null; }
+}
 function stageProgress(id) { return progress()[id] || { stars: [] }; }
 function isStageComplete(id) {
   const p = stageProgress(id);
@@ -689,7 +705,8 @@ function openChallenge(stageId, idx) {
   ).join('');
   document.getElementById('ch-msg').textContent = '';
   document.getElementById('ch-msg').className = 'ch-msg';
-  STATE.script = JSON.parse(JSON.stringify(ch.initialScript || []));
+  const saved = loadSavedScript(stageId, idx);
+  STATE.script = saved ? JSON.parse(JSON.stringify(saved)) : JSON.parse(JSON.stringify(ch.initialScript || []));
   renderScript();
   const stage = STAGES.find(s => s.id === stageId);
   renderPalette(stage.unlockedCats);
@@ -733,7 +750,7 @@ function getActiveScript(ownerKey) {
   return null;
 }
 function rerenderScript(ownerKey) {
-  if (ownerKey === 'challenge') renderScript();
+  if (ownerKey === 'challenge') { renderScript(); saveCurrentScript(); }
   else if (ownerKey === 'sandbox') renderSandboxScript();
 }
 function isFillInForContext(ownerKey) {
@@ -1266,6 +1283,8 @@ window.ps.SB = SB;
 window.ps.openSandbox = openSandbox;
 window.ps.renderSandbox = renderSandbox;
 window.ps.drawSandboxScene = drawSandboxScene;
+window.ps.saveCurrentScript = saveCurrentScript;
+window.ps.loadSavedScript = loadSavedScript;
 
 function __dev_tests() {
   const fail = [], pass = [];
