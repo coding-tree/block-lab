@@ -560,7 +560,8 @@ function appendSlotContent(parent, val, opts) {
     if (!def) { parent.appendChild(document.createTextNode('?')); return; }
     const nestedEl = document.createElement('span');
     nestedEl.className = `nested b-${def.cat}`;
-    appendLabelParts(nestedEl, def, val.slots || {}, opts, val);
+    const nestedOpts = { ...opts, lockLiterals: false };
+    appendLabelParts(nestedEl, def, val.slots || {}, nestedOpts, val);
     parent.appendChild(nestedEl);
     return;
   }
