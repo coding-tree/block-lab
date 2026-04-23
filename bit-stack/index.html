@@ -110,8 +110,18 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 
 /* ═══ CIRCUIT BUILDER ═══ */
 .circuit {
-  flex: 1; display: flex; padding: 20px; gap: 12px; overflow-x: auto; align-items: flex-start;
+  flex: 1; display: flex; padding: 20px 16px; gap: 20px; overflow-x: auto; align-items: flex-start;
 }
+.add-layer-btn {
+  align-self: flex-start; margin-top: 78px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--bg3); border: 1px dashed var(--border2); color: var(--muted);
+  font-family: var(--font); font-size: 15px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: color .15s, border-color .15s, border-style .15s;
+}
+.add-layer-btn:hover { color: var(--cyan); border-color: var(--cyan); border-style: solid; }
 .circuit-col {
   min-width: 140px; max-width: 180px; flex-shrink: 0;
   background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r);
@@ -120,12 +130,15 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .circuit-col-header {
   padding: 8px 12px; font-size: 10px; font-weight: 800; text-transform: uppercase;
   letter-spacing: 1px; color: var(--muted); border-bottom: 1px solid var(--border);
-  text-align: center;
+  text-align: center; position: relative;
 }
-.circuit-col-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
-.circuit-arrow {
-  font-size: 20px; color: var(--border); align-self: center; flex-shrink: 0; margin-top: 40px;
+.circuit-col-header .layer-rm {
+  position: absolute; top: 4px; right: 6px; background: none; border: none;
+  color: var(--border); cursor: pointer; font-size: 11px; padding: 0 2px;
 }
+.circuit-col-header .layer-rm:hover { color: var(--red); }
+.circuit-col-body { padding: 8px; display: flex; flex-direction: column; gap: 8px; min-height: 160px; }
+.circuit-arrow { display: none; } /* SVG wires already show flow direction */
 
 /* input switches */
 .input-switch {
@@ -147,6 +160,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   font-family: var(--mono); font-weight: 700; font-size: 14px; width: 18px; text-align: center;
 }
 .input-switch.on .sw-val { color: var(--yellow); }
+.input-switch .gate-rm {
+  position: absolute; top: 4px; right: 6px; background: none; border: none;
+  color: var(--border); cursor: pointer; font-size: 11px; padding: 0 2px;
+  opacity: 0; transition: opacity .15s, color .15s;
+}
+.input-switch:hover .gate-rm { opacity: 1; }
+.input-switch .gate-rm:hover { color: var(--red); }
 
 /* gates */
 .gate-box {
@@ -1388,6 +1408,63 @@ function renderCircuitChallenge(ch) {
   showView('challenge');
 }
 
+function addLayer() {
+  circuitLayers.push([]);
+  refreshCircuit();
+}
+
+function removeLayer(li) {
+  if (circuitLayers.length <= 1) return;
+  circuitLayers.splice(li, 1);
+  // Remap wires: any ref to this layer becomes null; later layers shift down.
+  const remap = (w) => {
+    if (!w) return null;
+    if (w.layer === li) return null;
+    if (w.layer > li) return { layer: w.layer - 1, idx: w.idx };
+    return w;
+  };
+  circuitLayers.forEach(layer => layer.forEach(gate => {
+    if (gate.wires) gate.wires = gate.wires.map(remap);
+  }));
+  if (circuitOutputWire) circuitOutputWire = remap(circuitOutputWire);
+  refreshCircuit();
+}
+
+function addInput() {
+  if (circuitInputs.length >= 8) return;
+  const name = String.fromCharCode(65 + circuitInputs.length);
+  circuitInputs.push(name);
+  circuitValues[name] = 0;
+  refreshCircuit();
+}
+
+function removeInput(i) {
+  if (circuitInputs.length <= 1) return;
+  // Rebuild inputs A, B, C... with entry i dropped
+  const newInputs = [];
+  const newValues = {};
+  for (let j = 0; j < circuitInputs.length; j++) {
+    if (j === i) continue;
+    const newName = String.fromCharCode(65 + newInputs.length);
+    newValues[newName] = circuitValues[circuitInputs[j]] || 0;
+    newInputs.push(newName);
+  }
+  circuitInputs = newInputs;
+  circuitValues = newValues;
+  // Shift / null wires that referenced this input
+  const remap = (w) => {
+    if (!w || w.layer !== -1) return w;
+    if (w.idx === i) return null;
+    if (w.idx > i) return { layer: -1, idx: w.idx - 1 };
+    return w;
+  };
+  circuitLayers.forEach(layer => layer.forEach(gate => {
+    if (gate.wires) gate.wires = gate.wires.map(remap);
+  }));
+  if (circuitOutputWire) circuitOutputWire = remap(circuitOutputWire);
+  refreshCircuit();
+}
+
 // Gate is "used" if something downstream consumes its output (another gate or the output bulb).
 function usedGateKeys() {
   const used = new Set();
@@ -1431,18 +1508,26 @@ function renderCircuitUI(ch, available, opts) {
     : '';
 
   // inputs column — each switch also has an output port
+  const isSandbox = ch.type === 'sandbox';
   let inputsHtml = circuitInputs.map((name, i) => {
     const isArmedSrc = armedPort && armedPort.kind === 'input' && armedPort.idx === i;
     const switchClick = lockInputs
       ? ''
       : `onclick="circuitValues['${name}']=circuitValues['${name}']?0:1;refreshCircuit();"`;
+    const rmBtn = (isSandbox && circuitInputs.length > 1)
+      ? `<button class="gate-rm" onclick="event.stopPropagation(); removeInput(${i});" title="Usun wejscie">✕</button>`
+      : '';
     return `<div class="input-switch ${circuitValues[name]?'on':''}" ${lockInputs ? 'style="cursor:default;opacity:.85;"' : switchClick}>
+      ${rmBtn}
       <div class="sw-label">${name}</div>
       <div class="sw-bulb">${circuitValues[name]?'💡':'⚫'}</div>
       <div class="sw-val">${circuitValues[name]}</div>
       <div id="port-out-input-${i}" class="port port-out${isArmedSrc?' armed':''}" title="Kliknij zeby polaczyc z bramka" onclick="event.stopPropagation(); armPort('input',-1,${i});"></div>
     </div>`;
   }).join('');
+  if (isSandbox && circuitInputs.length < 8) {
+    inputsHtml += `<div class="gate-drop" onclick="addInput()">+ dodaj wejscie</div>`;
+  }
 
   // layer columns — each gate has ports
   const usedKeys = usedGateKeys();
@@ -1492,12 +1577,18 @@ function renderCircuitUI(ch, available, opts) {
         ondrop="onGateDrop(event,${li})">+ dodaj bramke</div>`;
     }
 
+    const rmLayerBtn = (isSandbox && circuitLayers.length > 1)
+      ? `<button class="layer-rm" onclick="event.stopPropagation(); removeLayer(${li});" title="Usun warstwe">✕</button>`
+      : '';
     layersHtml += `<div class="circuit-arrow">→</div>
       <div class="circuit-col">
-        <div class="circuit-col-header">Warstwa ${li+1}</div>
+        <div class="circuit-col-header">Warstwa ${li+1}${rmLayerBtn}</div>
         <div class="circuit-col-body">${gatesHtml}</div>
       </div>`;
   });
+  if (isSandbox) {
+    layersHtml += `<button class="add-layer-btn" onclick="addLayer()" title="Dodaj warstwe">+</button>`;
+  }
 
   // output bulb — has an input port
   const finalOutput = getFinalOutput();
