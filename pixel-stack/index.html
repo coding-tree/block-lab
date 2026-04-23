@@ -382,6 +382,44 @@ function openChallenge(stageId, idx) {
 function backToStage() { openStage(STATE.stage); }
 function backToTree() { showView('tree-view'); renderTree(); }
 
+function makeDefaultSlots(def) {
+  const out = {};
+  Object.entries(def.slots || {}).forEach(([k, s]) => { out[k] = s.default; });
+  return out;
+}
+
+document.addEventListener('dragstart', e => {
+  const t = e.target.closest && e.target.closest('.palette-block');
+  if (!t || !t.dataset.blockId) return;
+  // only palette items carry dataset.blockId set by renderPalette; script-area blocks don't
+  if (!t.closest('#palette')) return;
+  e.dataTransfer.setData('text/block-id', t.dataset.blockId);
+  e.dataTransfer.effectAllowed = 'copy';
+});
+
+const scriptArea = document.getElementById('script-area');
+scriptArea.addEventListener('dragover', e => {
+  if (e.dataTransfer.types.includes('text/block-id')) { e.preventDefault(); }
+});
+scriptArea.addEventListener('drop', e => {
+  e.preventDefault();
+  const id = e.dataTransfer.getData('text/block-id');
+  const def = BLOCKS[id]; if (!def) return;
+  const targetBody = e.target.closest('[data-role="body"]');
+  const defaults = makeDefaultSlots(def);
+  if (def.type === 'trigger') {
+    if (targetBody) { alert('Trigger nie może być w ciele innego triggera.'); return; }
+    STATE.script.push({ id, slots: defaults, body: [] });
+  } else if (def.type === 'statement') {
+    if (!targetBody) { alert('Przeciągnij blok do ciała triggera (obszar z lewym paskiem).'); return; }
+    const ti = Number(targetBody.dataset.triggerIdx);
+    STATE.script[ti].body.push({ id, slots: defaults });
+  } else {
+    return; // expressions handled in Task 20 (Phase 6)
+  }
+  renderScript();
+});
+
 renderTree();
 
 window.ps = { STATE, showView };
