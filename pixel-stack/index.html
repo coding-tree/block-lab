@@ -997,7 +997,17 @@ function worldStart() {
   const canvasId = WORLD.canvasId || 'scene';
   const loop = () => {
     if (!WORLD.running) return;
-    stepOnce();
+    try { stepOnce(); }
+    catch (e) {
+      worldStop();
+      console.warn('PixelStack runtime error:', e);
+      const msg = document.getElementById('ch-msg');
+      if (msg && STATE.view === 'challenge-view') {
+        msg.className = 'ch-msg fail';
+        msg.textContent = 'Błąd w skrypcie: ' + (e && e.message ? e.message : e);
+      }
+      return;
+    }
     drawScene(WORLD.sprites, canvasId);
     WORLD.raf = requestAnimationFrame(loop);
   };
@@ -1035,13 +1045,17 @@ function compileActiveSprite() { return compileSpritesForChallenge()[0]; }
 
 function runHeadless(maxTicks, sprites) {
   worldReset(sprites);
-  for (let i = 0; i < maxTicks; i++) stepOnce();
-  // Semantics: `t: 0` = post-init state (on-start has fired, no ticks run).
-  // When maxTicks > 0, on-start already fires inside the first stepOnce.
-  if (maxTicks === 0) {
-    for (const s of WORLD.sprites) {
-      if (s.alive && !s._started) { runTrigger('on-start', s, WORLD.globals); s._started = true; }
+  try {
+    for (let i = 0; i < maxTicks; i++) stepOnce();
+    // Semantics: `t: 0` = post-init state (on-start has fired, no ticks run).
+    // When maxTicks > 0, on-start already fires inside the first stepOnce.
+    if (maxTicks === 0) {
+      for (const s of WORLD.sprites) {
+        if (s.alive && !s._started) { runTrigger('on-start', s, WORLD.globals); s._started = true; }
+      }
     }
+  } catch (e) {
+    console.warn('runHeadless error:', e);
   }
   return { s: WORLD.sprites[0], sprites: WORLD.sprites, globals: WORLD.globals, tick: WORLD.tick };
 }
