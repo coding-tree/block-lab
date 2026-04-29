@@ -464,7 +464,7 @@ CHALLENGES.pixels = [
   {
     title: 'Prawy dolny róg',
     type: 'fill-in-blank',
-    goal: 'Postaw 16×16 kwadrat tak, żeby dotykał prawego dolnego rogu sceny (512×320).',
+    goal: 'Postaw 16×16 kwadrat tak, żeby dotykał prawego dolnego rogu sceny (512×320). Podpowiedź: pozycja (x, y) to lewy górny róg sprite\'a — odejmij rozmiar od krawędzi sceny.',
     initialSprites: [{ color: '#ffaa00', w: 16, h: 16 }],
     initialScript: [{ id: 'on-start', body: [
       { id: 'set-pos', slots: { x: null, y: null } }
