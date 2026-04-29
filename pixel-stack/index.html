@@ -821,6 +821,8 @@ document.body.addEventListener('drop', e => {
 
 document.body.addEventListener('click', e => {
   const ctx = getActiveScriptContext(e); if (!ctx) return;
+  // Click landed on an existing editor — let it handle its own click (esp. native color picker).
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   const slotEl = e.target.closest('.slot');
   if (!slotEl) return;
   if (slotEl.dataset.locked === '1') return;
