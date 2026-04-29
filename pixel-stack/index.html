@@ -101,9 +101,9 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   background: var(--bg2); border: 1px dashed var(--border); border-radius: var(--r); padding: 12px;
 }
 .script-body { min-height: 28px; }
-.script-body:empty::before {
-  content: 'upuść tu blok'; display: block; padding: 6px 0;
-  color: var(--muted); font-size: 11px; font-style: italic; opacity: 0.7;
+.script-body::after {
+  content: '+ upuść tu blok'; display: block; padding: 4px 0;
+  color: var(--muted); font-size: 11px; font-style: italic; opacity: 0.5;
 }
 #scene { background: #000; image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px; }
 .ch-controls { display: flex; gap: 10px; }
