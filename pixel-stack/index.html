@@ -498,6 +498,20 @@ function loadSavedScript(stageId, idx) {
     return all?.[stageId]?.[idx] || null;
   } catch { return null; }
 }
+// Tag nodes with `_blanks`: slot keys that were originally null in initialScript.
+// These remain editable in fill-in-blank mode even after the user fills them in.
+function markBlanks(loaded, original) {
+  if (!Array.isArray(loaded) || !Array.isArray(original)) return;
+  const len = Math.min(loaded.length, original.length);
+  for (let i = 0; i < len; i++) {
+    const ln = loaded[i], on = original[i];
+    if (!ln || !on) continue;
+    const slots = on.slots || {};
+    const blanks = Object.keys(slots).filter(k => slots[k] === null);
+    if (blanks.length) ln._blanks = blanks;
+    if (Array.isArray(on.body)) markBlanks(ln.body, on.body);
+  }
+}
 function stageProgress(id) { return progress()[id] || { stars: [] }; }
 function isStageComplete(id) {
   const p = stageProgress(id);
@@ -599,7 +613,8 @@ function appendLabelParts(parent, def, slots, opts, ownerNode) {
     slotEl.className = 'slot';
     slotEl.dataset.slot = key;
     slotEl.__node = ownerNode; // every slot knows its owning node
-    const locked = opts.lockLiterals && val !== null && val !== undefined && !(typeof val === 'object');
+    const isBlankKey = !!(ownerNode && Array.isArray(ownerNode._blanks) && ownerNode._blanks.includes(key));
+    const locked = opts.lockLiterals && val !== null && val !== undefined && !(typeof val === 'object') && !isBlankKey;
     if (locked) slotEl.dataset.locked = '1';
     appendSlotContent(slotEl, val, opts);
     parent.appendChild(slotEl);
@@ -707,6 +722,7 @@ function openChallenge(stageId, idx) {
   document.getElementById('ch-msg').className = 'ch-msg';
   const saved = loadSavedScript(stageId, idx);
   STATE.script = saved ? JSON.parse(JSON.stringify(saved)) : JSON.parse(JSON.stringify(ch.initialScript || []));
+  markBlanks(STATE.script, ch.initialScript || []);
   renderScript();
   const stage = STAGES.find(s => s.id === stageId);
   renderPalette(stage.unlockedCats);
