@@ -672,19 +672,27 @@ function renderScript() {
   el.innerHTML = '';
   STATE.script = STATE.script || emptyScript();
   const opts = { lockLiterals: isFillInMode() };
+  const movable = !opts.lockLiterals;
   STATE.script.forEach((trig, ti) => {
     const def = BLOCKS[trig.id];
     if (!def) return;
-    el.appendChild(renderBlockEl(trig, def, opts));
+    const trigEl = renderBlockEl(trig, def, opts);
+    trigEl.dataset.triggerIdx = ti;
+    if (movable) trigEl.draggable = true;
+    el.appendChild(trigEl);
     const body = document.createElement('div');
     body.className = 'script-body';
     body.dataset.role = 'body';
     body.dataset.triggerIdx = ti;
     body.style.cssText = 'margin-left:20px;border-left:2px solid var(--border);padding-left:10px;margin-bottom:8px;';
-    (trig.body || []).forEach((n) => {
+    (trig.body || []).forEach((n, si) => {
       const def2 = BLOCKS[n.id];
       if (!def2) return;
-      body.appendChild(renderBlockEl(n, def2, opts));
+      const stmtEl = renderBlockEl(n, def2, opts);
+      stmtEl.dataset.triggerIdx = ti;
+      stmtEl.dataset.stmtIdx = si;
+      if (movable) stmtEl.draggable = true;
+      body.appendChild(stmtEl);
     });
     el.appendChild(body);
   });
@@ -746,11 +754,25 @@ function makeDefaultSlots(def) {
 
 document.addEventListener('dragstart', e => {
   const t = e.target.closest && e.target.closest('.palette-block');
-  if (!t || !t.dataset.blockId) return;
-  // only palette items carry dataset.blockId set by renderPalette / renderSandboxPalette
-  if (!(t.closest('#palette') || t.closest('#sb-palette'))) return;
-  e.dataTransfer.setData('text/block-id', t.dataset.blockId);
-  e.dataTransfer.effectAllowed = 'copy';
+  if (!t) return;
+  // Palette item — copy a fresh block into the script
+  if (t.dataset.blockId) {
+    if (!(t.closest('#palette') || t.closest('#sb-palette'))) return;
+    e.dataTransfer.setData('text/block-id', t.dataset.blockId);
+    e.dataTransfer.effectAllowed = 'copy';
+    return;
+  }
+  // Script-area block — move existing node within the script
+  if (t.dataset.triggerIdx === undefined) return;
+  const ctx = getActiveScriptContext(e);
+  if (!ctx) return;
+  if (isFillInForContext(ctx.scriptOwner)) return;
+  e.dataTransfer.setData('text/script-move', JSON.stringify({
+    owner: ctx.scriptOwner,
+    ti: Number(t.dataset.triggerIdx),
+    si: t.dataset.stmtIdx !== undefined ? Number(t.dataset.stmtIdx) : null,
+  }));
+  e.dataTransfer.effectAllowed = 'move';
 });
 
 function getActiveScriptContext(e) {
@@ -780,11 +802,15 @@ function isFillInForContext(ownerKey) {
 
 document.body.addEventListener('dragover', e => {
   if (!getActiveScriptContext(e)) return;
-  if (e.dataTransfer.types.includes('text/block-id')) e.preventDefault();
+  const types = e.dataTransfer.types;
+  if (types.includes('text/block-id') || types.includes('text/script-move')) e.preventDefault();
 });
 document.body.addEventListener('drop', e => {
   const ctx = getActiveScriptContext(e); if (!ctx) return;
   e.preventDefault();
+  // Reorder existing block within the script
+  const moveRaw = e.dataTransfer.getData('text/script-move');
+  if (moveRaw) { handleScriptMove(e, ctx, moveRaw); return; }
   const id = e.dataTransfer.getData('text/block-id');
   const def = BLOCKS[id]; if (!def) return;
   const script = getActiveScript(ctx.scriptOwner);
@@ -823,6 +849,53 @@ document.body.addEventListener('drop', e => {
   }
   rerenderScript(ctx.scriptOwner);
 });
+
+// Reorder a block already in the script. Statements move within / between bodies;
+// triggers move at the top level. Insertion position uses the mouse Y vs the
+// nearest sibling block's midpoint (upper half = before, lower half = after).
+function handleScriptMove(e, ctx, raw) {
+  if (isFillInForContext(ctx.scriptOwner)) return;
+  let src; try { src = JSON.parse(raw); } catch { return; }
+  if (!src || src.owner !== ctx.scriptOwner) return;
+  const script = getActiveScript(ctx.scriptOwner);
+  if (!script) return;
+  const isStatement = src.si !== null && src.si !== undefined;
+  if (isStatement) {
+    const sourceArr = script[src.ti] && script[src.ti].body;
+    const node = sourceArr && sourceArr[src.si];
+    if (!node) return;
+    const targetBody = e.target.closest('[data-role="body"]');
+    if (!targetBody) return;
+    const targetTi = Number(targetBody.dataset.triggerIdx);
+    const targetArr = script[targetTi] && script[targetTi].body;
+    if (!targetArr) return;
+    let insertAt = targetArr.length;
+    const sib = e.target.closest('.palette-block');
+    if (sib && sib.parentElement === targetBody && sib.dataset.stmtIdx !== undefined) {
+      const r = sib.getBoundingClientRect();
+      const before = e.clientY < r.top + r.height / 2;
+      insertAt = Number(sib.dataset.stmtIdx) + (before ? 0 : 1);
+    }
+    sourceArr.splice(src.si, 1);
+    if (sourceArr === targetArr && src.si < insertAt) insertAt -= 1;
+    targetArr.splice(insertAt, 0, node);
+  } else {
+    if (e.target.closest('[data-role="body"]')) return;
+    const node = script[src.ti];
+    if (!node) return;
+    let insertAt = script.length;
+    const sib = e.target.closest('.palette-block');
+    if (sib && sib.dataset.triggerIdx !== undefined && sib.dataset.stmtIdx === undefined) {
+      const r = sib.getBoundingClientRect();
+      const before = e.clientY < r.top + r.height / 2;
+      insertAt = Number(sib.dataset.triggerIdx) + (before ? 0 : 1);
+    }
+    script.splice(src.ti, 1);
+    if (src.ti < insertAt) insertAt -= 1;
+    script.splice(insertAt, 0, node);
+  }
+  rerenderScript(ctx.scriptOwner);
+}
 
 document.body.addEventListener('click', e => {
   const ctx = getActiveScriptContext(e); if (!ctx) return;
@@ -1287,15 +1360,22 @@ function renderSandboxScript() {
   const opts = { lockLiterals: false };
   (active.script || []).forEach((trig, ti) => {
     const def = BLOCKS[trig.id]; if (!def) return;
-    el.appendChild(renderBlockEl(trig, def, opts));
+    const trigEl = renderBlockEl(trig, def, opts);
+    trigEl.dataset.triggerIdx = ti;
+    trigEl.draggable = true;
+    el.appendChild(trigEl);
     const body = document.createElement('div');
     body.className = 'script-body';
     body.dataset.role = 'body';
     body.dataset.triggerIdx = ti;
     body.style.cssText = 'margin-left:20px;border-left:2px solid var(--border);padding-left:10px;margin-bottom:8px;';
-    (trig.body || []).forEach(n => {
+    (trig.body || []).forEach((n, si) => {
       const def2 = BLOCKS[n.id]; if (!def2) return;
-      body.appendChild(renderBlockEl(n, def2, opts));
+      const stmtEl = renderBlockEl(n, def2, opts);
+      stmtEl.dataset.triggerIdx = ti;
+      stmtEl.dataset.stmtIdx = si;
+      stmtEl.draggable = true;
+      body.appendChild(stmtEl);
     });
     el.appendChild(body);
   });
