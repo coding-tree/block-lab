@@ -133,7 +133,21 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .palette-block.b-state  { background: #4488ff22; border: 1px solid #4488ff55; }
 .palette-block.b-math   { background: #ffaa0022; border: 1px solid #ffaa0055; }
 .palette-block.b-motion { background: #00ddff22; border: 1px solid #00ddff55; }
-.hole { display: inline-block; min-width: 28px; padding: 0 6px; background: var(--bg4); border: 1px dashed var(--border2); border-radius: 4px; color: var(--muted); }
+.hole { display: inline-block; min-width: 56px; padding: 1px 10px; background: var(--bg4); border: 2px dashed var(--border2); border-radius: 5px; color: var(--muted); font-size: 13px; text-align: center; transition: all .12s; }
+.slot:not([data-locked="1"]) { cursor: text; }
+.slot[data-locked="1"] { cursor: not-allowed; opacity: 0.65; }
+/* Drag-over feedback */
+.slot.dragover, [data-role="body"].dragover { background: rgba(0, 221, 255, 0.14); box-shadow: 0 0 8px rgba(0, 221, 255, 0.45); border-radius: 5px; }
+.slot.dragover .hole, .hole.dragover { border-color: #00ddff; background: rgba(0, 221, 255, 0.22); color: var(--text); }
+/* Click-to-place: armed palette block + valid drop targets */
+.palette-block.selected { outline: 2px solid #00ddff; outline-offset: 2px; box-shadow: 0 0 10px rgba(0, 221, 255, 0.55); }
+.slot.target, [data-role="body"].target { outline: 2px dashed #00ddff; outline-offset: 1px; animation: target-pulse 1.4s ease-in-out infinite; cursor: copy; }
+.slot.target .hole { border-color: #00ddff; background: rgba(0, 221, 255, 0.16); color: var(--text); }
+@keyframes target-pulse { 0%,100% { outline-color: #00ddff; } 50% { outline-color: rgba(0,221,255,0.35); } }
+/* Remove button — always visible but dim, pops on hover */
+.btn-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 50%; background: rgba(255, 90, 90, 0.18); color: #ff8a8a; font-size: 13px; font-weight: bold; line-height: 1; cursor: pointer; opacity: 0.45; transition: opacity .12s, background .12s, transform .12s; user-select: none; vertical-align: middle; }
+.btn-remove:hover { opacity: 1; background: rgba(255, 90, 90, 0.55); transform: scale(1.15); }
+.palette-block:hover > .btn-remove, .slot:hover > .btn-remove { opacity: 0.85; }
 .nested { display: inline-block; padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 11px; }
 .nested.b-draw   { background: #ff55ff33; }
 .nested.b-loop   { background: #00ff8833; }
@@ -645,6 +659,12 @@ function appendSlotContent(parent, val, opts) {
     const nestedOpts = { ...opts, lockLiterals: false };
     appendLabelParts(nestedEl, def, val.slots || {}, nestedOpts, val);
     parent.appendChild(nestedEl);
+    const x = document.createElement('span');
+    x.className = 'btn-remove';
+    x.textContent = '×';
+    x.title = 'usuń';
+    x.dataset.removeNested = '1';
+    parent.appendChild(x);
     return;
   }
   parent.appendChild(document.createTextNode(String(val)));
@@ -655,6 +675,14 @@ function renderBlockEl(node, def, opts) {
   bl.className = `palette-block b-${def.cat}`;
   bl.__node = node;
   appendLabelParts(bl, def, node.slots || {}, opts, node);
+  if (!opts.lockLiterals) {
+    const x = document.createElement('span');
+    x.className = 'btn-remove';
+    x.textContent = '×';
+    x.title = 'usuń blok';
+    x.dataset.removeBlock = '1';
+    bl.appendChild(x);
+  }
   return bl;
 }
 
@@ -696,6 +724,7 @@ function renderScript() {
     });
     el.appendChild(body);
   });
+  if (typeof applyTargetHighlights === 'function') applyTargetHighlights();
 }
 
 function renderPalette(cats) {
@@ -758,6 +787,7 @@ document.addEventListener('dragstart', e => {
   // Palette item — copy a fresh block into the script
   if (t.dataset.blockId) {
     if (!(t.closest('#palette') || t.closest('#sb-palette'))) return;
+    if (typeof clearPaletteSelection === 'function') clearPaletteSelection();
     e.dataTransfer.setData('text/block-id', t.dataset.blockId);
     e.dataTransfer.effectAllowed = 'copy';
     return;
@@ -800,54 +830,66 @@ function isFillInForContext(ownerKey) {
   return ownerKey === 'challenge' && isFillInMode();
 }
 
-document.body.addEventListener('dragover', e => {
-  if (!getActiveScriptContext(e)) return;
-  const types = e.dataTransfer.types;
-  if (types.includes('text/block-id') || types.includes('text/script-move')) e.preventDefault();
-});
-document.body.addEventListener('drop', e => {
-  const ctx = getActiveScriptContext(e); if (!ctx) return;
-  e.preventDefault();
-  // Reorder existing block within the script
-  const moveRaw = e.dataTransfer.getData('text/script-move');
-  if (moveRaw) { handleScriptMove(e, ctx, moveRaw); return; }
-  const id = e.dataTransfer.getData('text/block-id');
-  const def = BLOCKS[id]; if (!def) return;
+// Place a fresh palette block at a click/drop target. Returns true if it landed.
+// Shared by drag-and-drop and click-to-place flows.
+function tryPlaceBlock(id, targetEl, ctx, opts = {}) {
+  const def = BLOCKS[id]; if (!def) return false;
   const script = getActiveScript(ctx.scriptOwner);
-  if (!script && ctx.scriptOwner === 'sandbox') return;
+  if (!script && ctx.scriptOwner === 'sandbox') return false;
 
-  // Expression → expression slot (works in both fill-in-blank and normal modes)
   if (def.type === 'expression') {
-    const slot = e.target.closest('.slot');
-    if (!slot) return;
-    if (slot.dataset.locked === '1') return;
-    const node = slot.__node;
-    if (!node) return;
+    const slot = targetEl.closest('.slot');
+    if (!slot || slot.dataset.locked === '1') return false;
+    const node = slot.__node; if (!node) return false;
     const slotKey = slot.dataset.slot;
     const parentDef = BLOCKS[node.id];
     const slotDef = parentDef && parentDef.slots && parentDef.slots[slotKey];
-    if (!slotDef || slotDef.type !== 'expression') return;
+    if (!slotDef || slotDef.type !== 'expression') return false;
     node.slots = node.slots || {};
     node.slots[slotKey] = { id, slots: makeDefaultSlots(def) };
     rerenderScript(ctx.scriptOwner);
-    return;
+    return true;
   }
 
-  // Trigger / statement drops are block-level — disabled in fill-in-blank challenge mode
-  if (isFillInForContext(ctx.scriptOwner)) return;
-  const targetBody = e.target.closest('[data-role="body"]');
+  // Trigger / statement — disabled in fill-in-blank challenge mode
+  if (isFillInForContext(ctx.scriptOwner)) return false;
+  const targetBody = targetEl.closest('[data-role="body"]');
   const defaults = makeDefaultSlots(def);
   if (def.type === 'trigger') {
-    if (targetBody) { alert('Trigger nie może być w ciele innego triggera.'); return; }
+    if (targetBody) { if (opts.alert) alert('Trigger nie może być w ciele innego triggera.'); return false; }
     script.push({ id, slots: defaults, body: [] });
   } else if (def.type === 'statement') {
-    if (!targetBody) { alert('Przeciągnij blok do ciała triggera (obszar z lewym paskiem).'); return; }
+    if (!targetBody) { if (opts.alert) alert('Przeciągnij blok do ciała triggera (obszar z lewym paskiem).'); return false; }
     const ti = Number(targetBody.dataset.triggerIdx);
     script[ti].body.push({ id, slots: defaults });
   } else {
-    return;
+    return false;
   }
   rerenderScript(ctx.scriptOwner);
+  return true;
+}
+
+document.body.addEventListener('dragover', e => {
+  if (!getActiveScriptContext(e)) return;
+  const types = e.dataTransfer.types;
+  const isBlockDrag = types.includes('text/block-id') || types.includes('text/script-move');
+  if (!isBlockDrag) return;
+  e.preventDefault();
+  const target = e.target.closest('.slot, [data-role="body"]');
+  document.querySelectorAll('.dragover').forEach(el => { if (el !== target) el.classList.remove('dragover'); });
+  if (target && target.dataset.locked !== '1') target.classList.add('dragover');
+});
+document.addEventListener('dragend', () => document.querySelectorAll('.dragover').forEach(el => el.classList.remove('dragover')));
+
+document.body.addEventListener('drop', e => {
+  const ctx = getActiveScriptContext(e); if (!ctx) return;
+  e.preventDefault();
+  document.querySelectorAll('.dragover').forEach(el => el.classList.remove('dragover'));
+  const moveRaw = e.dataTransfer.getData('text/script-move');
+  if (moveRaw) { handleScriptMove(e, ctx, moveRaw); return; }
+  const id = e.dataTransfer.getData('text/block-id');
+  if (!id) return;
+  tryPlaceBlock(id, e.target, ctx, { alert: true });
 });
 
 // Reorder a block already in the script. Statements move within / between bodies;
@@ -897,8 +939,94 @@ function handleScriptMove(e, ctx, raw) {
   rerenderScript(ctx.scriptOwner);
 }
 
+// Click-to-place: arm a palette block by clicking it, then click a target.
+// Clean clicks (no drag) fire `click`; drags don't, so the two interactions don't collide.
+function selectPalette(id) {
+  STATE.selectedPaletteId = id;
+  document.querySelectorAll('.palette-block.selected').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll(`.palette-block[data-block-id="${id}"]`).forEach(el => el.classList.add('selected'));
+  applyTargetHighlights();
+}
+function clearPaletteSelection() {
+  STATE.selectedPaletteId = null;
+  document.querySelectorAll('.palette-block.selected').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('.target').forEach(el => el.classList.remove('target'));
+}
+function applyTargetHighlights() {
+  document.querySelectorAll('.target').forEach(el => el.classList.remove('target'));
+  const id = STATE.selectedPaletteId; if (!id) return;
+  const def = BLOCKS[id]; if (!def) return;
+  ['script-area', 'sb-script-area'].forEach(rid => {
+    const r = document.getElementById(rid); if (!r) return;
+    const owner = rid === 'script-area' ? 'challenge' : 'sandbox';
+    if (def.type === 'expression') {
+      r.querySelectorAll('.slot').forEach(slot => {
+        if (slot.dataset.locked === '1') return;
+        const node = slot.__node; if (!node) return;
+        const parentDef = BLOCKS[node.id];
+        const slotDef = parentDef && parentDef.slots && parentDef.slots[slot.dataset.slot];
+        if (slotDef && slotDef.type === 'expression') slot.classList.add('target');
+      });
+    } else if (def.type === 'statement' && !isFillInForContext(owner)) {
+      r.querySelectorAll('[data-role="body"]').forEach(b => b.classList.add('target'));
+    }
+  });
+}
+
+document.addEventListener('click', e => {
+  const pb = e.target.closest('.palette-block');
+  if (pb && pb.dataset.blockId && (pb.closest('#palette') || pb.closest('#sb-palette'))) {
+    if (STATE.selectedPaletteId === pb.dataset.blockId) clearPaletteSelection();
+    else selectPalette(pb.dataset.blockId);
+    return;
+  }
+  // Click outside palette/script-area while armed → cancel
+  if (STATE.selectedPaletteId && !e.target.closest('#script-area, #sb-script-area')) {
+    clearPaletteSelection();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && STATE.selectedPaletteId) clearPaletteSelection();
+});
+
 document.body.addEventListener('click', e => {
   const ctx = getActiveScriptContext(e); if (!ctx) return;
+  // Remove buttons take priority over everything else.
+  const xBtn = e.target.closest('.btn-remove');
+  if (xBtn) {
+    e.stopPropagation();
+    if (xBtn.dataset.removeNested) {
+      const slot = xBtn.closest('.slot');
+      const node = slot && slot.__node;
+      const slotKey = slot && slot.dataset.slot;
+      if (!node || !slotKey) return;
+      const def = BLOCKS[node.id];
+      const slotDef = def && def.slots && def.slots[slotKey];
+      const isBlank = !!(node._blanks && node._blanks.includes(slotKey));
+      node.slots[slotKey] = isBlank ? null : (slotDef ? slotDef.default : 0);
+      rerenderScript(ctx.scriptOwner);
+      return;
+    }
+    if (xBtn.dataset.removeBlock) {
+      if (isFillInForContext(ctx.scriptOwner)) return;
+      const block = xBtn.closest('.palette-block');
+      const target = block && block.__node;
+      const script = getActiveScript(ctx.scriptOwner);
+      if (!target || !script) return;
+      removeNodeFrom(script, target);
+      rerenderScript(ctx.scriptOwner);
+      return;
+    }
+    return;
+  }
+  // Armed selection: place at target if click is on one, then disarm.
+  if (STATE.selectedPaletteId) {
+    const onTarget = e.target.closest('.target');
+    if (onTarget) tryPlaceBlock(STATE.selectedPaletteId, e.target, ctx);
+    clearPaletteSelection();
+    return;
+  }
   // Click landed on an existing editor — let it handle its own click (esp. native color picker).
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   const slotEl = e.target.closest('.slot');
