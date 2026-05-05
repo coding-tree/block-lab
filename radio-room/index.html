@@ -1035,16 +1035,62 @@ function runTrigger(trigId, device) {
   }
 }
 
-// M1: instant in-tick delivery to same-channel devices, no drops, no delay.
-// M2 will replace this with a scheduled radio bus + drop% / delay knobs.
+// Seedable PRNG (mulberry32). Lessons that compare observed to configured
+// drop rate need a deterministic mode; setSeed switches it on/off.
+function mulberry32(seed) {
+  let s = (seed | 0) >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function setSeed(seed) {
+  WORLD.knobs.seed = (seed === '' || seed == null) ? null : (Number(seed) | 0);
+  WORLD.rng = WORLD.knobs.seed === null ? Math.random : mulberry32(WORLD.knobs.seed);
+}
+
+// Schedule one delivery per (sender → receiver) pair. Each link rolls its
+// own drop dice and gets its own jittered delay — that's how real radio
+// works (per-link reliability), and it makes observed drop% match the knob.
 function tryBroadcast(fromDev, msg, channel) {
+  const dropChance = (WORLD.knobs.dropPct || 0) / 100;
+  const delayMs    = WORLD.knobs.delayMs || 0;
+  const jitter     = WORLD.knobs.jitter ?? 0.5;
+  const TICK_MS    = 1000 / 30;
   for (const d of WORLD.devices) {
     if (d === fromDev) continue;
     if (d.channel !== channel) continue;
-    d.lastMsg = msg;
-    d.inbox.unshift({ msg, channel, from: fromDev.name, at: WORLD.tick });
-    if (d.inbox.length > 16) d.inbox.length = 16;
-    runMessageHandlers(d, msg, channel);
+    const j = 1 + (WORLD.rng() * 2 - 1) * jitter;
+    const delayTicks = Math.max(0, Math.round((delayMs * j) / TICK_MS));
+    const dropped = WORLD.rng() < dropChance;
+    WORLD.bus.push({
+      from: fromDev, to: d, channel, msg,
+      sentAt: WORLD.tick, deliverAt: WORLD.tick + delayTicks, dropped,
+    });
+    const s = WORLD.stats[channel] = WORLD.stats[channel] || { sent: 0, delivered: 0, dropped: 0 };
+    s.sent++;
+  }
+}
+
+function deliverDueMessages() {
+  if (WORLD.bus.length === 0) return;
+  const due = [], remaining = [];
+  for (const m of WORLD.bus) (m.deliverAt <= WORLD.tick ? due : remaining).push(m);
+  WORLD.bus = remaining;
+  // Reorder OFF: respect send order. Reorder ON: leave whatever order
+  // jitter produced (later-sent messages can deliver earlier).
+  if (!WORLD.knobs.reorder) due.sort((a, b) => a.sentAt - b.sentAt);
+  for (const m of due) {
+    const s = WORLD.stats[m.channel];
+    if (m.dropped) { if (s) s.dropped++; continue; }
+    if (s) s.delivered++;
+    m.to.lastMsg = m.msg;
+    m.to.inbox.unshift({ msg: m.msg, channel: m.channel, from: m.from.name, at: WORLD.tick });
+    if (m.to.inbox.length > 16) m.to.inbox.length = 16;
+    runMessageHandlers(m.to, m.msg, m.channel);
   }
 }
 
@@ -1060,7 +1106,14 @@ function runMessageHandlers(d, msg, channel) {
   }
 }
 
-const WORLD = { devices: [], running: false, tick: 0, raf: 0 };
+const WORLD = {
+  devices: [],
+  bus: [],     // pending deliveries: { from, to, channel, msg, sentAt, deliverAt, dropped }
+  stats: {},   // per-channel { sent, delivered, dropped }
+  knobs: { dropPct: 0, delayMs: 0, jitter: 0.5, reorder: false, seed: null },
+  rng: Math.random,
+  running: false, tick: 0, raf: 0,
+};
 
 function worldReset(devices) {
   WORLD.devices = devices.map(d => ({
@@ -1071,7 +1124,10 @@ function worldReset(devices) {
     inbox: [],
     lastMsg: '',
   }));
+  WORLD.bus = [];
+  WORLD.stats = {};
   WORLD.tick = 0;
+  setSeed(WORLD.knobs.seed);
 }
 
 function worldStart() {
@@ -1108,6 +1164,9 @@ function stepOnce() {
     if (!d._started) { runTrigger('on-start', d); d._started = true; }
     runTrigger('on-tick', d);
   }
+  // Deliver any messages whose delivery tick has arrived (after triggers
+  // had a chance to enqueue more). With delay=0, delivery is same-tick.
+  deliverDueMessages();
   WORLD.tick++;
 }
 
@@ -1287,6 +1346,9 @@ window.ps.evalExpr = evalExpr;
 window.ps.runStatement = runStatement;
 window.ps.runTrigger = runTrigger;
 window.ps.tryBroadcast = tryBroadcast;
+window.ps.deliverDueMessages = deliverDueMessages;
+window.ps.setSeed = setSeed;
+window.ps.mulberry32 = mulberry32;
 window.ps.WORLD = WORLD;
 window.ps.worldReset = worldReset;
 window.ps.worldStart = worldStart;
@@ -1322,6 +1384,9 @@ function __dev_tests() {
   t('screen-fill off', d2.display.every(v => v === 0));
 
   // Broadcast on same channel: receiver lights up via on-message handler.
+  // Reset knobs to default (no drops, no delay) before scenarios that
+  // expect deterministic delivery — earlier tests may have changed them.
+  WORLD.knobs.dropPct = 0; WORLD.knobs.delayMs = 0; WORLD.knobs.reorder = false;
   worldReset([
     makeDevice({ name: 'A', channel: 1, script: [
       { id: 'on-start', body: [{ id: 'broadcast', slots: { msg: 'ping', ch: 1 } }] },
@@ -1337,6 +1402,37 @@ function __dev_tests() {
   t('broadcast reaches same channel',  WORLD.devices[1].display[0] === 1);
   t('broadcast skips other channel',   WORLD.devices[2].display[0] === 0);
   t('lastMsg recorded on receiver',    WORLD.devices[1].lastMsg === 'ping');
+
+  // Drop rate observed ≈ configured over many messages. Seeded for reproducibility.
+  WORLD.knobs.dropPct = 50; WORLD.knobs.delayMs = 0; WORLD.knobs.seed = 42;
+  worldReset([
+    makeDevice({ name: 'A', channel: 1, script: [
+      { id: 'on-tick', body: [{ id: 'broadcast', slots: { msg: 'p', ch: 1 } }] },
+    ]}),
+    makeDevice({ name: 'B', channel: 1 }),
+  ]);
+  for (let i = 0; i < 1000; i++) stepOnce();
+  const rate = WORLD.stats[1].delivered / WORLD.stats[1].sent;
+  t('drop ~50% over 1000 (seed=42)', Math.abs(rate - 0.5) < 0.05);
+
+  // Delay: with delayMs=200 (~6 ticks at 30Hz) message should NOT arrive at tick 0.
+  WORLD.knobs.dropPct = 0; WORLD.knobs.delayMs = 200; WORLD.knobs.jitter = 0; WORLD.knobs.seed = 7;
+  worldReset([
+    makeDevice({ name: 'A', channel: 1, script: [
+      { id: 'on-start', body: [{ id: 'broadcast', slots: { msg: 'late', ch: 1 } }] },
+    ]}),
+    makeDevice({ name: 'B', channel: 1, script: [
+      { id: 'on-message', slots: { msg: 'late', ch: 1 }, body: [{ id: 'led-on', slots: { x: 0, y: 0 } }] },
+    ]}),
+  ]);
+  stepOnce();  // on-start fires, message buffered with deliverAt = 0 + 6 = 6
+  t('delayed not delivered yet',   WORLD.devices[1].display[0] === 0);
+  for (let i = 0; i < 6; i++) stepOnce();  // ticks 1..6
+  t('delayed delivered after wait', WORLD.devices[1].display[0] === 1);
+
+  // Cleanup knobs so any subsequent code starts clean.
+  WORLD.knobs.dropPct = 0; WORLD.knobs.delayMs = 0; WORLD.knobs.jitter = 0.5; WORLD.knobs.reorder = false; WORLD.knobs.seed = null;
+  setSeed(null);
 
   console.log('%cRadioRoom dev tests', 'font-weight:bold', `${pass.length} pass, ${fail.length} fail`);
   pass.forEach(n => console.log('  ✅', n));
