@@ -272,7 +272,8 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 </div>
 <script>
 const STAGES = [
-  { id: 'msgs', track: 'basics', title: 'Wiadomości', icon: '📡', desc: 'broadcast i kanały', requires: [], unlockedCats: ['events','radio','display','state','flow'] },
+  { id: 'msgs', track: 'basics', title: 'Wiadomości',          icon: '📡', desc: 'broadcast i kanały',          requires: [],       unlockedCats: ['events','radio','display','state','flow'] },
+  { id: 'prob', track: 'prob',   title: 'Prawdopodobieństwo',  icon: '🎲', desc: 'drop, opóźnienie, kolejność',  requires: ['msgs'], unlockedCats: ['events','radio','display','state','flow'] },
 ];
 
 const TRACKS = {
@@ -315,6 +316,7 @@ const CATEGORIES = {
 
 const CHALLENGES = {
   msgs: [],
+  prob: [],
 };
 
 CHALLENGES.msgs = [
@@ -419,6 +421,115 @@ CHALLENGES.msgs = [
       { t: 1, label: 'A dostał odpowiedź',       assert: 'd0.state.ok === 1' },
       { t: 1, label: 'A zapalił środek',         assert: 'd0.display[12] === 1' },
       { t: 1, label: 'B usłyszał "ping"',        assert: "d1.lastMsg === 'ping'" },
+    ],
+  },
+];
+
+CHALLENGES.prob = [
+  // 5) Zgubione wiadomości — drop=50%. Some get through, some don't.
+  //    Kid fills the receiver's msg/ch (same scaffold as Cześć!).
+  {
+    title: 'Zgubione wiadomości',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 50, delayMs: 0, jitter: 0.5, reorder: false, seed: 42 },
+    goal: 'Drop wynosi 50%. Naciśnij ▶ Uruchom kilka razy — czasem światełka błyskają, czasem nic. Wypełnij dziury w "gdy odebrano" urządzenia B, a B będzie zliczać odebrane wiadomości.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [{ id: 'broadcast', slots: { msg: 'hi', ch: 1 } }] },
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 10, label: 'coś dotarło',  assert: 'd1.state.n >= 1' },
+      { t: 10, label: 'coś zginęło',  assert: 'd1.state.n <= 9' },
+    ],
+  },
+
+  // 6) Średnia — drop=50%, 100 ticks. Observed count converges near 50.
+  {
+    title: 'Średnia',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 50, delayMs: 0, jitter: 0.5, reorder: false, seed: 42 },
+    goal: 'Z drop=50% i 100 wiadomości spodziewasz się około 50 odebranych. Wypełnij "gdy odebrano" tak jak poprzednio.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [{ id: 'broadcast', slots: { msg: 'hi', ch: 1 } }] },
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 100, label: 'odebrano w okolicy 50', assert: 'd1.state.n >= 35 && d1.state.n <= 65' },
+    ],
+  },
+
+  // 7) Dwa razy częściej — A's on-tick has TWO broadcast blocks; the
+  //    second is blank. Filling it doubles the chance per tick.
+  {
+    title: 'Dwa razy częściej',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 70, delayMs: 0, jitter: 0.5, reorder: false, seed: 42 },
+    goal: 'Drop wynosi 70%. A nadaje raz w każdym ticku, ale ma drugi blok "nadaj" obok — wypełnij go (msg "hi", kanał 1), żeby próbować dwa razy. Z dwóch prób większa szansa, że choć jedna dotrze.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [
+          { id: 'broadcast', slots: { msg: 'hi', ch: 1 } },
+          { id: 'broadcast', slots: { msg: null, ch: null } },
+        ]},
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: 'hi', ch: 1 }, body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 30, label: 'pojedyncza próba by nie wystarczyła', assert: 'd1.state.n > 10' },
+    ],
+  },
+
+  // 8) Opóźnienie i kolejność — three messages sent on start with delay
+  //    + reorder. Kid fills three on-message handlers (one per msg). All
+  //    three should still arrive; their order is what shifts.
+  {
+    title: 'Opóźnienie i kolejność',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 0, delayMs: 400, jitter: 0.5, reorder: true, seed: 42 },
+    goal: 'A wysyła trzy wiadomości "a", "b", "c" naraz. Z opóźnieniem i włączoną losową kolejnością mogą dotrzeć w innej kolejności! Wypełnij trzy bloki "gdy odebrano" w B (msg "a", "b", "c", wszystkie na kanale 1), aby B oznaczył flagi, które wiadomości otrzymał.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-start', body: [
+          { id: 'broadcast', slots: { msg: 'a', ch: 1 } },
+          { id: 'broadcast', slots: { msg: 'b', ch: 1 } },
+          { id: 'broadcast', slots: { msg: 'c', ch: 1 } },
+        ]},
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'set-state', slots: { field: 'gotA', val: 1 } },
+        ]},
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'set-state', slots: { field: 'gotB', val: 1 } },
+        ]},
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'set-state', slots: { field: 'gotC', val: 1 } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 30, label: 'B odebrał "a"', assert: 'd1.state.gotA === 1' },
+      { t: 30, label: 'B odebrał "b"', assert: 'd1.state.gotB === 1' },
+      { t: 30, label: 'B odebrał "c"', assert: 'd1.state.gotC === 1' },
     ],
   },
 ];
