@@ -155,11 +155,52 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 .nested.b-motion { background: #00ddff33; }
 
 /* Device row + LED display */
+.devices-stage { position: relative; margin-bottom: 12px; }
 .devices-row {
   display: flex; flex-wrap: wrap; gap: 16px; padding: 14px;
   background: #000; border: 1px solid var(--border); border-radius: 8px;
-  min-height: 160px; margin-bottom: 12px;
+  min-height: 160px;
 }
+.radio-space {
+  position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+  border-radius: 8px;
+}
+.dot {
+  position: absolute; width: 10px; height: 10px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px currentColor;
+  font-family: var(--mono); font-size: 9px; color: #000; text-align: center; line-height: 10px;
+}
+.dot.dropped { color: #ff5566 !important; background: transparent !important; box-shadow: none !important; font-size: 14px; font-weight: 700; }
+.dice {
+  position: absolute; width: 18px; height: 18px; line-height: 18px;
+  font-family: var(--mono); font-size: 11px; color: var(--text);
+  background: var(--bg3); border: 1px solid var(--border2); border-radius: 4px;
+  text-align: center; transform: translate(-50%, -50%);
+  pointer-events: none; opacity: 0;
+}
+/* Knobs */
+.knobs-panel {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+  padding: 8px 12px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+.knob { display: flex; align-items: center; gap: 6px; }
+.knob label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.knob input[type="range"] { width: 90px; accent-color: var(--cyan); }
+.knob input[type="text"] { width: 60px; padding: 2px 6px; background: var(--bg3); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: var(--mono); font-size: 11px; }
+.knob input[type="checkbox"] { accent-color: var(--cyan); }
+.knob-value { color: var(--cyan); min-width: 42px; text-align: right; }
+/* Stats */
+.stats-panel {
+  margin-top: 12px; padding: 10px 12px; font-family: var(--mono); font-size: 11px;
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+}
+.stats-panel-title { color: var(--muted); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+.stats-row { display: grid; grid-template-columns: 36px 60px 60px 50px; gap: 8px; padding: 2px 0; color: var(--text); }
+.stats-row.head { color: var(--muted); font-size: 10px; }
+.stats-channel-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 .device {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 10px 12px; background: var(--bg2); border: 1px solid var(--border);
@@ -202,7 +243,16 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
     <div class="ch-body">
       <aside id="palette" class="ch-col palette"></aside>
       <section class="ch-col ch-main">
-        <div id="devices-row" class="devices-row"></div>
+        <div class="devices-stage">
+          <div id="devices-row" class="devices-row"></div>
+          <div id="radio-space" class="radio-space"></div>
+        </div>
+        <div id="knobs-panel" class="knobs-panel">
+          <div class="knob"><label>drop %</label><input id="knob-drop" type="range" min="0" max="80" value="0"><span id="knob-drop-val" class="knob-value">0%</span></div>
+          <div class="knob"><label>opóźnienie</label><input id="knob-delay" type="range" min="0" max="2000" step="50" value="0"><span id="knob-delay-val" class="knob-value">0ms</span></div>
+          <div class="knob"><label><input id="knob-reorder" type="checkbox"> kolejność losowa</label></div>
+          <div class="knob"><label>ziarno</label><input id="knob-seed" type="text" placeholder="losowe" maxlength="8"></div>
+        </div>
         <div id="script-area" class="script-area"></div>
         <div class="ch-controls">
           <button id="btn-run">▶ Uruchom</button>
@@ -214,6 +264,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
         <div id="ch-goal" class="ch-goal"></div>
         <div id="ch-tests" class="ch-tests"></div>
         <div id="ch-msg" class="ch-msg"></div>
+        <div id="stats-panel" class="stats-panel"></div>
       </aside>
     </div>
   </div>
@@ -1052,24 +1103,38 @@ function setSeed(seed) {
   WORLD.rng = WORLD.knobs.seed === null ? Math.random : mulberry32(WORLD.knobs.seed);
 }
 
+// Channel palette. ch.0 unused; ch.1..9 are the real radio channels.
+const CHANNEL_COLORS = ['', '#00ddff', '#ff55ff', '#ffaa00', '#00ff88', '#4488ff', '#ff8acc', '#ff6e00', '#bb66ff', '#ff5555'];
+
 // Schedule one delivery per (sender → receiver) pair. Each link rolls its
 // own drop dice and gets its own jittered delay — that's how real radio
 // works (per-link reliability), and it makes observed drop% match the knob.
+let __busSeq = 0;
 function tryBroadcast(fromDev, msg, channel) {
   const dropChance = (WORLD.knobs.dropPct || 0) / 100;
   const delayMs    = WORLD.knobs.delayMs || 0;
   const jitter     = WORLD.knobs.jitter ?? 0.5;
   const TICK_MS    = 1000 / 30;
+  const nowMs = performance.now();
   for (const d of WORLD.devices) {
     if (d === fromDev) continue;
     if (d.channel !== channel) continue;
     const j = 1 + (WORLD.rng() * 2 - 1) * jitter;
-    const delayTicks = Math.max(0, Math.round((delayMs * j) / TICK_MS));
+    const actualDelayMs = Math.max(0, delayMs * j);
+    const delayTicks = Math.max(0, Math.round(actualDelayMs / TICK_MS));
     const dropped = WORLD.rng() < dropChance;
-    WORLD.bus.push({
-      from: fromDev, to: d, channel, msg,
+    const roll = Math.floor(WORLD.rng() * 10);  // d10 face for the dice flash
+    const entry = {
+      id: ++__busSeq, from: fromDev, to: d, channel, msg,
       sentAt: WORLD.tick, deliverAt: WORLD.tick + delayTicks, dropped,
-    });
+      // Visual fields (parallel timeline in real ms).
+      fromIdx: WORLD.devices.indexOf(fromDev),
+      toIdx:   WORLD.devices.indexOf(d),
+      msSent: nowMs, msDeliver: nowMs + actualDelayMs,
+      msFinish: 0, fxState: 'flying', diceRoll: roll, diceShown: false,
+    };
+    WORLD.bus.push(entry);
+    WORLD.fx.push(entry);
     const s = WORLD.stats[channel] = WORLD.stats[channel] || { sent: 0, delivered: 0, dropped: 0 };
     s.sent++;
   }
@@ -1083,10 +1148,18 @@ function deliverDueMessages() {
   // Reorder OFF: respect send order. Reorder ON: leave whatever order
   // jitter produced (later-sent messages can deliver earlier).
   if (!WORLD.knobs.reorder) due.sort((a, b) => a.sentAt - b.sentAt);
+  const nowMs = performance.now();
   for (const m of due) {
     const s = WORLD.stats[m.channel];
-    if (m.dropped) { if (s) s.dropped++; continue; }
+    if (m.dropped) {
+      if (s) s.dropped++;
+      m.fxState = 'dropped';
+      m.msFinish = nowMs + 250;  // brief fade window for the ✗
+      continue;
+    }
     if (s) s.delivered++;
+    m.fxState = 'delivered';
+    m.msFinish = nowMs + 200;    // brief landing flash
     m.to.lastMsg = m.msg;
     m.to.inbox.unshift({ msg: m.msg, channel: m.channel, from: m.from.name, at: WORLD.tick });
     if (m.to.inbox.length > 16) m.to.inbox.length = 16;
@@ -1108,7 +1181,8 @@ function runMessageHandlers(d, msg, channel) {
 
 const WORLD = {
   devices: [],
-  bus: [],     // pending deliveries: { from, to, channel, msg, sentAt, deliverAt, dropped }
+  bus: [],     // pending deliveries (live); pruned at delivery
+  fx: [],      // visual queue (mirrors bus, kept ~200ms after delivery for fade)
   stats: {},   // per-channel { sent, delivered, dropped }
   knobs: { dropPct: 0, delayMs: 0, jitter: 0.5, reorder: false, seed: null },
   rng: Math.random,
@@ -1125,9 +1199,13 @@ function worldReset(devices) {
     lastMsg: '',
   }));
   WORLD.bus = [];
+  WORLD.fx = [];
   WORLD.stats = {};
   WORLD.tick = 0;
   setSeed(WORLD.knobs.seed);
+  const rs = document.getElementById('radio-space');
+  if (rs) rs.innerHTML = '';
+  renderStats();
 }
 
 function worldStart() {
@@ -1150,11 +1228,118 @@ function worldStart() {
         return;
       }
       renderDevices();
+      renderStats();
       lastStep = now;
     }
+    renderRadioSpace(now);  // every frame, smooth dot animation
     WORLD.raf = requestAnimationFrame(loop);
   };
   WORLD.raf = requestAnimationFrame(loop);
+}
+
+function pruneFx(now) {
+  WORLD.fx = WORLD.fx.filter(m => m.fxState === 'flying' || (m.msFinish && m.msFinish > now));
+}
+
+function getDeviceCenter(idx) {
+  const tile = document.querySelector(`.device[data-device-idx="${idx}"]`);
+  const rs = document.getElementById('radio-space');
+  if (!tile || !rs) return null;
+  const t = tile.getBoundingClientRect();
+  const r = rs.getBoundingClientRect();
+  return { x: t.left + t.width / 2 - r.left, y: t.top + t.height / 2 - r.top };
+}
+
+function renderRadioSpace(now) {
+  const root = document.getElementById('radio-space');
+  if (!root) return;
+  pruneFx(now);
+  const seen = new Set();
+  for (const m of WORLD.fx) {
+    seen.add(String(m.id));
+    const from = getDeviceCenter(m.fromIdx);
+    const to   = getDeviceCenter(m.toIdx);
+    if (!from || !to) continue;
+    let dot = root.querySelector(`.dot[data-fx-id="${m.id}"]`);
+    if (!dot) {
+      dot = document.createElement('div');
+      dot.className = 'dot';
+      dot.dataset.fxId = m.id;
+      const color = CHANNEL_COLORS[m.channel] || '#ffffff';
+      dot.style.color = color;
+      dot.style.background = color;
+      root.appendChild(dot);
+    }
+    if (!m.diceShown) {
+      m.diceShown = true;
+      const dice = document.createElement('div');
+      dice.className = 'dice';
+      dice.textContent = m.diceRoll;
+      dice.style.left = from.x + 'px';
+      dice.style.top  = (from.y - 22) + 'px';
+      dice.style.color = m.dropped ? '#ff5566' : (CHANNEL_COLORS[m.channel] || '#fff');
+      dice.style.borderColor = dice.style.color;
+      root.appendChild(dice);
+      // animate: pop in, drift up, fade out
+      requestAnimationFrame(() => { dice.style.transition = 'opacity .18s, top .35s'; dice.style.opacity = '1'; });
+      setTimeout(() => { dice.style.opacity = '0'; dice.style.top = (from.y - 38) + 'px'; }, 200);
+      setTimeout(() => { dice.remove(); }, 700);
+    }
+    if (m.fxState === 'flying') {
+      const span = m.msDeliver - m.msSent;
+      const t = span > 0 ? Math.max(0, Math.min(1, (now - m.msSent) / span)) : 1;
+      dot.style.left = (from.x + (to.x - from.x) * t) + 'px';
+      dot.style.top  = (from.y + (to.y - from.y) * t) + 'px';
+      dot.style.opacity = '1';
+    } else if (m.fxState === 'delivered') {
+      dot.style.left = to.x + 'px';
+      dot.style.top  = to.y + 'px';
+      dot.style.opacity = String(Math.max(0, (m.msFinish - now) / 200));
+    } else if (m.fxState === 'dropped') {
+      const span = m.msDeliver - m.msSent;
+      const t = span > 0 ? Math.max(0, Math.min(1, (now - m.msSent) / span)) : 0.5;
+      dot.style.left = (from.x + (to.x - from.x) * t) + 'px';
+      dot.style.top  = (from.y + (to.y - from.y) * t) + 'px';
+      dot.classList.add('dropped');
+      dot.textContent = '✗';
+      dot.style.opacity = String(Math.max(0, (m.msFinish - now) / 250));
+    }
+  }
+  root.querySelectorAll('.dot[data-fx-id]').forEach(el => {
+    if (!seen.has(el.dataset.fxId)) el.remove();
+  });
+}
+
+function renderStats() {
+  const el = document.getElementById('stats-panel');
+  if (!el) return;
+  const channels = Object.keys(WORLD.stats).map(Number).sort((a, b) => a - b);
+  if (channels.length === 0) {
+    el.innerHTML = '<div class="stats-panel-title">Statystyki</div><div style="color:var(--muted);font-size:11px">Brak ruchu na radiu.</div>';
+    return;
+  }
+  let html = '<div class="stats-panel-title">Statystyki</div>';
+  html += '<div class="stats-row head"><span>kan.</span><span>nadane</span><span>odebrane</span><span>%</span></div>';
+  for (const ch of channels) {
+    const s = WORLD.stats[ch];
+    const rate = s.sent > 0 ? Math.round((s.delivered / s.sent) * 100) : 0;
+    const color = CHANNEL_COLORS[ch] || '#ffffff';
+    html += `<div class="stats-row"><span><span class="stats-channel-dot" style="background:${color}"></span>ch.${ch}</span><span>${s.sent}</span><span>${s.delivered}</span><span>${rate}%</span></div>`;
+  }
+  el.innerHTML = html;
+}
+
+function bindKnobs() {
+  const drop = document.getElementById('knob-drop');
+  const dropV = document.getElementById('knob-drop-val');
+  if (drop) drop.addEventListener('input', () => { WORLD.knobs.dropPct = Number(drop.value); dropV.textContent = drop.value + '%'; });
+  const delay = document.getElementById('knob-delay');
+  const delayV = document.getElementById('knob-delay-val');
+  if (delay) delay.addEventListener('input', () => { WORLD.knobs.delayMs = Number(delay.value); delayV.textContent = delay.value + 'ms'; });
+  const ro = document.getElementById('knob-reorder');
+  if (ro) ro.addEventListener('change', e => { WORLD.knobs.reorder = e.target.checked; });
+  const seed = document.getElementById('knob-seed');
+  if (seed) seed.addEventListener('change', e => { setSeed(e.target.value); });
 }
 
 function worldStop() { WORLD.running = false; cancelAnimationFrame(WORLD.raf); }
@@ -1328,6 +1513,7 @@ document.body.addEventListener('click', e => {
 
 renderTree();
 updateStarsBadge();
+bindKnobs();
 
 window.ps = { STATE, showView };
 window.ps.renderTree = renderTree;
@@ -1349,6 +1535,10 @@ window.ps.tryBroadcast = tryBroadcast;
 window.ps.deliverDueMessages = deliverDueMessages;
 window.ps.setSeed = setSeed;
 window.ps.mulberry32 = mulberry32;
+window.ps.renderRadioSpace = renderRadioSpace;
+window.ps.renderStats = renderStats;
+window.ps.bindKnobs = bindKnobs;
+window.ps.CHANNEL_COLORS = CHANNEL_COLORS;
 window.ps.WORLD = WORLD;
 window.ps.worldReset = worldReset;
 window.ps.worldStart = worldStart;
