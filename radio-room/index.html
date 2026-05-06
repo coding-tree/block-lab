@@ -274,6 +274,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 const STAGES = [
   { id: 'msgs', track: 'basics', title: 'Wiadomości',          icon: '📡', desc: 'broadcast i kanały',          requires: [],       unlockedCats: ['events','radio','display','state','flow'] },
   { id: 'prob', track: 'prob',   title: 'Prawdopodobieństwo',  icon: '🎲', desc: 'drop, opóźnienie, kolejność',  requires: ['msgs'], unlockedCats: ['events','radio','display','state','flow'] },
+  { id: 'ec',   track: 'ec',     title: 'Spójność',            icon: '🔁', desc: 'rozjazd i godzenie stanu',     requires: ['prob'], unlockedCats: ['events','radio','display','state','flow'] },
 ];
 
 const TRACKS = {
@@ -289,8 +290,8 @@ const BLOCKS = {
   'on-click-a':  { cat: 'events',  type: 'trigger',    label: '🅰 gdy klik A' },
   'on-click-b':  { cat: 'events',  type: 'trigger',    label: '🅱 gdy klik B' },
   'on-message':  { cat: 'events',  type: 'trigger',    label: '📡 gdy odebrano §msg na §ch', slots: { msg: { type: 'ident', default: '' }, ch: { type: 'number', default: 1 } } },
-  // radio
-  'broadcast':   { cat: 'radio',   type: 'statement',  label: '📢 nadaj §msg na §ch',          slots: { msg: { type: 'ident', default: 'hi' }, ch: { type: 'number', default: 1 } } },
+  // radio (msg can be a string OR an expression like stan.n)
+  'broadcast':   { cat: 'radio',   type: 'statement',  label: '📢 nadaj §msg na §ch',          slots: { msg: { type: 'expression', default: 'hi' }, ch: { type: 'number', default: 1 } } },
   'last-msg':    { cat: 'radio',   type: 'expression', label: '📥 ostatnia wiadomość' },
   'set-channel': { cat: 'radio',   type: 'statement',  label: '🎯 ustaw kanał §ch',            slots: { ch: { type: 'number', default: 1 } } },
   // display (5x5 LED grid; coords 0..4)
@@ -303,7 +304,7 @@ const BLOCKS = {
   'get-state':   { cat: 'state',   type: 'expression', label: 'stan.§field',                   slots: { field: { type: 'ident', default: 'x' } } },
   // flow / math
   'num':         { cat: 'flow',    type: 'expression', label: '§n',                            slots: { n: { type: 'number', default: 0 } } },
-  'op':          { cat: 'flow',    type: 'expression', label: '(§a §op §b)',                   slots: { a: { type: 'expression', default: 0 }, op: { type: 'choice', options: ['+','-','*','/','%'], default: '+' }, b: { type: 'expression', default: 0 } } },
+  'op':          { cat: 'flow',    type: 'expression', label: '(§a §op §b)',                   slots: { a: { type: 'expression', default: 0 }, op: { type: 'choice', options: ['+','-','*','/','%','max','min'], default: '+' }, b: { type: 'expression', default: 0 } } },
 };
 
 const CATEGORIES = {
@@ -317,6 +318,7 @@ const CATEGORIES = {
 const CHALLENGES = {
   msgs: [],
   prob: [],
+  ec:   [],
 };
 
 CHALLENGES.msgs = [
@@ -533,6 +535,152 @@ CHALLENGES.prob = [
     ],
   },
 ];
+
+CHALLENGES.ec = [
+  // 9) Licznik się rozjeżdża — both devices increment locally AND broadcast
+  //    "inc" to nudge the other forward. With drops, the counters drift
+  //    apart because lost increments are gone for good. Kid fills the
+  //    receive handlers; the test confirms divergence.
+  {
+    title: 'Licznik się rozjeżdża',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 30, delayMs: 0, jitter: 0.5, reorder: false, seed: 42 },
+    goal: 'A i B liczą każde tyknięcie i nadają "inc" do drugiego. Drop=30%. Wypełnij obie obsługi "gdy odebrano" (msg "inc", kanał 1) i obejrzyj — liczniki się rozjadą, bo zgubione komunikaty znikają na zawsze.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+          { id: 'broadcast', slots: { msg: 'inc', ch: 1 } },
+        ]},
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+        ]},
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-tick', body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+          { id: 'broadcast', slots: { msg: 'inc', ch: 1 } },
+        ]},
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 30, label: 'A coś policzył',          assert: 'd0.state.n >= 30' },
+      { t: 30, label: 'B coś policzył',          assert: 'd1.state.n >= 30' },
+      { t: 30, label: 'A i B się rozjechali',    assert: 'd0.state.n !== d1.state.n' },
+    ],
+  },
+
+  // 10) Wyślij sumę — instead of broadcasting "inc" deltas, A broadcasts
+  //     its current TOTAL each tick. B simply overwrites its local n with
+  //     whatever it last received. Drops no longer cause permanent loss
+  //     — the next successful broadcast carries the right answer.
+  //     Kid drops a get-state(n) into A's broadcast msg slot.
+  {
+    title: 'Wyślij sumę',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 30, delayMs: 0, jitter: 0.5, reorder: false, seed: 42 },
+    goal: 'Zamiast wysyłać delty ("inc"), A nadaje teraz CAŁĄ sumę co tick. B kopiuje to do siebie. Wypełnij blok "nadaj" w A — przeciągnij blok "stan." z palety w dziurę i ustaw pole na "n", żeby A nadawał stan.n. Drop = 30%, ale liczniki się zejdą.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [
+          { id: 'set-state', slots: { field: 'n', val:
+            { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+          { id: 'broadcast', slots: { msg: null, ch: 1 } },
+        ]},
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: '', ch: 1 }, body: [
+          { id: 'set-state', slots: { field: 'n', val: { id: 'last-msg' } } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 50, label: 'A doszedł do około 50',  assert: 'd0.state.n >= 45 && d0.state.n <= 55' },
+      { t: 50, label: 'B nadgonił A',           assert: 'd1.state.n === d0.state.n' },
+    ],
+  },
+
+  // 11) Plotka — three devices, each maintains its own counter, all share
+  //     totals every tick, and on receive each device takes the MAX of
+  //     local-vs-received. This is gossip + monotonic merge: even with
+  //     drops, all converge over time. Kid picks the 'max' op.
+  {
+    title: 'Plotka',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 40, delayMs: 0, jitter: 0.5, reorder: false, seed: 42 },
+    goal: 'Trzy urządzenia, każde liczy własne ticki i nadaje swoją sumę. Drop=40%. Klucz: gdy odbiorą wiadomość, biorą WIĘKSZĄ z dwóch wartości — własnej i otrzymanej. Wybierz "max" w bloku "(a § b)" w obsłudze odbioru każdego z urządzeń.',
+    initialDevices: makeGossipTrio(),
+    tests: [
+      { t: 60, label: 'wszyscy coś policzyli', assert: 'd0.state.n > 30 && d1.state.n > 30 && d2.state.n > 30' },
+      { t: 60, label: 'A i B się zeszli',      assert: 'Math.abs(d0.state.n - d1.state.n) <= 2' },
+      { t: 60, label: 'A i C się zeszli',      assert: 'Math.abs(d0.state.n - d2.state.n) <= 2' },
+    ],
+  },
+
+  // 12) Dwa zespoły — four devices, two channels (A,B on ch.1; C,D on
+  //     ch.2). Each team has a leader (A, C) that counts and broadcasts
+  //     its total, and a follower (B, D) that copies whatever it hears.
+  //     Wrong leader broadcast channel ⇒ follower never hears, fails.
+  {
+    title: 'Dwa zespoły',
+    type: 'fill-in-blank',
+    knobs: { dropPct: 20, delayMs: 0, jitter: 0.5, reorder: false, seed: 42 },
+    goal: 'Cztery urządzenia, dwa zespoły. A jest liderem zespołu 1 (B słucha na kanale 1), C jest liderem zespołu 2 (D słucha na kanale 2). Wypełnij numer kanału w bloku "nadaj" lidera A (kanał 1) i lidera C (kanał 2), żeby ich obserwatorzy ich słyszeli.',
+    initialDevices: makeTwoTeams(),
+    tests: [
+      { t: 50, label: 'B nadąża za A',         assert: 'Math.abs(d0.state.n - d1.state.n) <= 5' },
+      { t: 50, label: 'D nadąża za C',         assert: 'Math.abs(d2.state.n - d3.state.n) <= 5' },
+      { t: 50, label: 'liderzy coś policzyli', assert: 'd0.state.n > 30 && d2.state.n > 30' },
+    ],
+  },
+];
+
+// Helpers — chapter-3 challenges share repetitive gossip scaffolds, easier
+// to read when factored out.
+function makeGossipDevice(name) {
+  const incExpr = () => ({ id: 'set-state', slots: { field: 'n', val:
+    { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } });
+  return { name, channel: 1, script: [
+    { id: 'on-tick', body: [
+      incExpr(),
+      { id: 'broadcast', slots: { msg: { id: 'get-state', slots: { field: 'n' } }, ch: 1 } },
+    ]},
+    { id: 'on-message', slots: { msg: '', ch: 1 }, body: [
+      { id: 'set-state', slots: { field: 'n', val:
+        { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: null, b: { id: 'last-msg' } } } } },
+    ]},
+  ]};
+}
+function makeGossipTrio() { return [makeGossipDevice('A'), makeGossipDevice('B'), makeGossipDevice('C')]; }
+function makeTeam(leader, follower, ch) {
+  // Leader counts ticks and broadcasts its current total. Follower copies
+  // whatever it last received. Wrong broadcast channel ⇒ follower never
+  // hears the leader and stays at 0 (the test failure mode for #12).
+  return [
+    { name: leader, channel: ch, script: [
+      { id: 'on-tick', body: [
+        { id: 'set-state', slots: { field: 'n', val:
+          { id: 'op', slots: { a: { id: 'get-state', slots: { field: 'n' } }, op: '+', b: 1 } } } },
+        { id: 'broadcast', slots: { msg: { id: 'get-state', slots: { field: 'n' } }, ch: null } },
+      ]},
+    ]},
+    { name: follower, channel: ch, script: [
+      { id: 'on-message', slots: { msg: '', ch: ch }, body: [
+        { id: 'set-state', slots: { field: 'n', val: { id: 'last-msg' } } },
+      ]},
+    ]},
+  ];
+}
+function makeTwoTeams() {
+  return [...makeTeam('A', 'B', 1), ...makeTeam('C', 'D', 2)];
+}
 
 const STATE = { view: 'tree-view', stage: null, challenge: null, activeDevice: 0, deviceScripts: [] };
 // STATE.script aliases the active device's script so the existing block engine
@@ -1242,11 +1390,13 @@ function evalExpr(node, ctx) {
       const a = Number(evalExpr(node.slots.a, ctx));
       const b = Number(evalExpr(node.slots.b, ctx));
       switch (node.slots.op) {
-        case '+': return a + b;
-        case '-': return a - b;
-        case '*': return a * b;
-        case '/': return b === 0 ? 0 : a / b;
-        case '%': return b === 0 ? 0 : a % b;
+        case '+':   return a + b;
+        case '-':   return a - b;
+        case '*':   return a * b;
+        case '/':   return b === 0 ? 0 : a / b;
+        case '%':   return b === 0 ? 0 : a % b;
+        case 'max': return Math.max(a, b);
+        case 'min': return Math.min(a, b);
       }
       return 0;
     }
@@ -1276,8 +1426,20 @@ function runStatement(node, ctx) {
     case 'show-num':    d.state.__shown = Number(evalExpr(node.slots.n, ctx)); break;
     case 'set-channel': d.channel = Math.max(1, Math.min(9, Number(evalExpr(node.slots.ch, ctx)) | 0)); break;
     case 'broadcast': {
-      const msg = String(node.slots.msg ?? '');
-      const ch  = Math.max(1, Math.min(9, Number(evalExpr(node.slots.ch, ctx)) | 0));
+      // null ch = "blank, kid hasn't filled it" → skip the broadcast entirely
+      // (matches on-message's null = unfilled rule). Without this, a null ch
+      // would coerce to 0 and clamp to 1, masking unsolved fill-in-blanks.
+      const chRaw = node.slots.ch;
+      if (chRaw === null || chRaw === undefined) break;
+      // msg slot accepts a literal string or any expression (e.g. stan.n).
+      // Evaluate the expression — strings stay strings, numbers come back as
+      // numbers. Either kind survives in the bus payload.
+      const raw = node.slots.msg;
+      let msg;
+      if (raw === null || raw === undefined) msg = '';
+      else if (typeof raw === 'object' && raw.id) msg = evalExpr(raw, ctx);
+      else msg = raw;
+      const ch  = Math.max(1, Math.min(9, Number(evalExpr(chRaw, ctx)) | 0));
       tryBroadcast(d, msg, ch);
       break;
     }
@@ -1392,7 +1554,10 @@ function runMessageHandlers(d, msg, channel) {
     // '' (empty string default) still means "match any" for free-form use.
     if (expectMsg === null || expectMsg === undefined) continue;
     if (expectCh  === null || expectCh  === undefined) continue;
-    if (expectMsg !== '' && expectMsg !== msg) continue;
+    // Coerce both sides to string for comparison. Broadcasts can carry
+    // numbers (e.g. broadcasting stan.n), but kids type strings in the
+    // on-message msg slot.
+    if (expectMsg !== '' && String(expectMsg) !== String(msg)) continue;
     if (Number(expectCh) !== channel) continue;
     runBody(trig.body, ctx);
   }
