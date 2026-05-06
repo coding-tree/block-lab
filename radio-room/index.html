@@ -272,7 +272,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 </div>
 <script>
 const STAGES = [
-  { id: 'hello', track: 'basics', title: 'Cześć radio', icon: '📡', desc: 'pierwsze wiadomości', requires: [], unlockedCats: ['events','radio','display','state','flow'] },
+  { id: 'msgs', track: 'basics', title: 'Wiadomości', icon: '📡', desc: 'broadcast i kanały', requires: [], unlockedCats: ['events','radio','display','state','flow'] },
 ];
 
 const TRACKS = {
@@ -314,19 +314,112 @@ const CATEGORIES = {
 };
 
 const CHALLENGES = {
-  hello: [],
+  msgs: [],
 };
 
-CHALLENGES.hello = [
+CHALLENGES.msgs = [
+  // 1) Cześć! — first broadcast & receive. Kid fills the receiver's
+  //    channel and message in the on-message trigger.
   {
     title: 'Cześć!',
-    type: 'free-form',
-    goal: 'Każde urządzenie ma swój skrypt. Kliknij na urządzenie, dodaj bloki, naciśnij ▶ Uruchom. Spróbuj sprawić, żeby A nadało wiadomość, a B ją odebrało (oba na kanale 1).',
+    type: 'fill-in-blank',
+    goal: 'Urządzenie A nadaje wiadomość "hi" co tick na kanale 1. Niech B odbierze ją i zapali środkowy piksel (2, 2). Wypełnij dziury w bloku "gdy odebrano".',
     initialDevices: [
-      { name: 'A', channel: 1 },
-      { name: 'B', channel: 1 },
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [{ id: 'broadcast', slots: { msg: 'hi', ch: 1 } }] },
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: null, ch: null }, body: [
+          { id: 'led-on', slots: { x: 2, y: 2 } },
+        ]},
+      ]},
     ],
-    tests: [],
+    tests: [
+      { t: 3, label: 'B odebrał "hi"',           assert: "d1.lastMsg === 'hi'" },
+      { t: 3, label: 'B zapalił środek (2,2)',   assert: 'd1.display[12] === 1' },
+    ],
+  },
+
+  // 2) Inny kanał — B starts subscribed to ch.2 (wrong) but receives ch.1
+  //    in its on-message handler. The fix is to set its listening channel
+  //    to 1 in on-start. Kid fills the channel number.
+  {
+    title: 'Inny kanał',
+    type: 'fill-in-blank',
+    goal: 'A nadaje co tick na kanale 1, ale B słucha na kanale 2 i nie odbiera. Wypełnij blok "ustaw kanał" w bloku "na start" urządzenia B, żeby B zaczęło słuchać tego samego kanału co A.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [{ id: 'broadcast', slots: { msg: 'go', ch: 1 } }] },
+      ]},
+      { name: 'B', channel: 2, script: [
+        { id: 'on-start',   body: [{ id: 'set-channel', slots: { ch: null } }] },
+        { id: 'on-message', slots: { msg: 'go', ch: 1 }, body: [
+          { id: 'led-on', slots: { x: 2, y: 2 } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 3, label: 'B przełączył się na ch.1', assert: 'd1.channel === 1' },
+      { t: 3, label: 'B odbiera "go"',           assert: "d1.lastMsg === 'go'" },
+    ],
+  },
+
+  // 3) Dwa kanały — A broadcasts on both ch.1 and ch.2 every tick.
+  //    Two listeners split across channels need their on-message ch filled.
+  {
+    title: 'Dwa kanały',
+    type: 'fill-in-blank',
+    goal: 'A nadaje co tick na obu kanałach: 1 i 2. Niech B (kanał 1) zapali (0, 0), a C (kanał 2) zapali (4, 4). Wypełnij numery kanałów w "gdy odebrano" obu urządzeń.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-tick', body: [
+          { id: 'broadcast', slots: { msg: 'hi', ch: 1 } },
+          { id: 'broadcast', slots: { msg: 'hi', ch: 2 } },
+        ]},
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: 'hi', ch: null }, body: [
+          { id: 'led-on', slots: { x: 0, y: 0 } },
+        ]},
+      ]},
+      { name: 'C', channel: 2, script: [
+        { id: 'on-message', slots: { msg: 'hi', ch: null }, body: [
+          { id: 'led-on', slots: { x: 4, y: 4 } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 3, label: 'B zapalił (0,0)', assert: 'd1.display[0] === 1' },
+      { t: 3, label: 'C zapalił (4,4)', assert: 'd2.display[24] === 1' },
+    ],
+  },
+
+  // 4) Echo — A pings, B echoes back. A's reply handler runs and lights
+  //    its own center LED + sets state.ok. Kid fills B's reply broadcast.
+  //    Cascade delivery (delay=0) makes this complete inside one tick.
+  {
+    title: 'Echo',
+    type: 'fill-in-blank',
+    goal: 'A wysyła "ping" raz na starcie. Niech B odpowie wiadomością "pong" na tym samym kanale. A już zna odpowiedź — gdy odbierze "pong", zapali środkowy piksel. Wypełnij dziury w bloku "nadaj" urządzenia B.',
+    initialDevices: [
+      { name: 'A', channel: 1, script: [
+        { id: 'on-start', body: [{ id: 'broadcast', slots: { msg: 'ping', ch: 1 } }] },
+        { id: 'on-message', slots: { msg: 'pong', ch: 1 }, body: [
+          { id: 'set-state', slots: { field: 'ok', val: 1 } },
+          { id: 'led-on', slots: { x: 2, y: 2 } },
+        ]},
+      ]},
+      { name: 'B', channel: 1, script: [
+        { id: 'on-message', slots: { msg: 'ping', ch: 1 }, body: [
+          { id: 'broadcast', slots: { msg: null, ch: null } },
+        ]},
+      ]},
+    ],
+    tests: [
+      { t: 1, label: 'A dostał odpowiedź',       assert: 'd0.state.ok === 1' },
+      { t: 1, label: 'A zapalił środek',         assert: 'd0.display[12] === 1' },
+      { t: 1, label: 'B usłyszał "ping"',        assert: "d1.lastMsg === 'ping'" },
+    ],
   },
 ];
 
@@ -612,6 +705,9 @@ function openChallenge(stageId, idx) {
     if (saved && saved[i]) return JSON.parse(JSON.stringify(saved[i]));
     return JSON.parse(JSON.stringify(init.script || []));
   });
+  // In fill-in-blank mode, tag slots that were originally null so they stay
+  // editable even after the kid fills them in. Done per device.
+  STATE.deviceScripts.forEach((sc, i) => markBlanks(sc, inits[i].script || []));
   STATE.activeDevice = 0;
   // Wire WORLD with editable copies so renderDevices can paint them straight away.
   worldReset(inits.map((init, i) => ({ ...init, script: STATE.deviceScripts[i] })));
@@ -1141,29 +1237,36 @@ function tryBroadcast(fromDev, msg, channel) {
 }
 
 function deliverDueMessages() {
-  if (WORLD.bus.length === 0) return;
-  const due = [], remaining = [];
-  for (const m of WORLD.bus) (m.deliverAt <= WORLD.tick ? due : remaining).push(m);
-  WORLD.bus = remaining;
-  // Reorder OFF: respect send order. Reorder ON: leave whatever order
-  // jitter produced (later-sent messages can deliver earlier).
-  if (!WORLD.knobs.reorder) due.sort((a, b) => a.sentAt - b.sentAt);
-  const nowMs = performance.now();
-  for (const m of due) {
-    const s = WORLD.stats[m.channel];
-    if (m.dropped) {
-      if (s) s.dropped++;
-      m.fxState = 'dropped';
-      m.msFinish = nowMs + 250;  // brief fade window for the ✗
-      continue;
+  // Cascade loop: when an `on-message` handler broadcasts a same-tick reply
+  // (delay=0), that reply must deliver in this tick too — otherwise simple
+  // ping/pong scenarios need an extra tick to converge. Bounded for safety.
+  let safety = 64;
+  while (safety-- > 0) {
+    if (WORLD.bus.length === 0) return;
+    const due = [], remaining = [];
+    for (const m of WORLD.bus) (m.deliverAt <= WORLD.tick ? due : remaining).push(m);
+    if (due.length === 0) return;
+    WORLD.bus = remaining;
+    // Reorder OFF: respect send order. Reorder ON: leave whatever order
+    // jitter produced (later-sent messages can deliver earlier).
+    if (!WORLD.knobs.reorder) due.sort((a, b) => a.sentAt - b.sentAt);
+    const nowMs = performance.now();
+    for (const m of due) {
+      const s = WORLD.stats[m.channel];
+      if (m.dropped) {
+        if (s) s.dropped++;
+        m.fxState = 'dropped';
+        m.msFinish = nowMs + 250;
+        continue;
+      }
+      if (s) s.delivered++;
+      m.fxState = 'delivered';
+      m.msFinish = nowMs + 200;
+      m.to.lastMsg = m.msg;
+      m.to.inbox.unshift({ msg: m.msg, channel: m.channel, from: m.from.name, at: WORLD.tick });
+      if (m.to.inbox.length > 16) m.to.inbox.length = 16;
+      runMessageHandlers(m.to, m.msg, m.channel);
     }
-    if (s) s.delivered++;
-    m.fxState = 'delivered';
-    m.msFinish = nowMs + 200;    // brief landing flash
-    m.to.lastMsg = m.msg;
-    m.to.inbox.unshift({ msg: m.msg, channel: m.channel, from: m.from.name, at: WORLD.tick });
-    if (m.to.inbox.length > 16) m.to.inbox.length = 16;
-    runMessageHandlers(m.to, m.msg, m.channel);
   }
 }
 
@@ -1173,8 +1276,13 @@ function runMessageHandlers(d, msg, channel) {
     if (trig.id !== 'on-message') continue;
     const expectMsg = trig.slots && trig.slots.msg;
     const expectCh  = trig.slots && trig.slots.ch;
-    if (expectMsg && expectMsg !== '' && expectMsg !== msg) continue;
-    if (expectCh && Number(expectCh) !== channel) continue;
+    // null = "blank, kid hasn't filled this in" → handler doesn't fire,
+    // so unfilled fill-in-blank challenges fail their tests as expected.
+    // '' (empty string default) still means "match any" for free-form use.
+    if (expectMsg === null || expectMsg === undefined) continue;
+    if (expectCh  === null || expectCh  === undefined) continue;
+    if (expectMsg !== '' && expectMsg !== msg) continue;
+    if (Number(expectCh) !== channel) continue;
     runBody(trig.body, ctx);
   }
 }
@@ -1393,12 +1501,20 @@ function evalAssert(exprStr, env) {
 }
 
 function runTests(ch) {
+  // Tests must be deterministic regardless of the kid's slider position.
+  // Default test knobs: no drops, no delay, fixed seed. The challenge can
+  // override via `ch.knobs` (chapter 2/3 will, e.g. dropPct: 50, seed: 1).
+  const savedKnobs = { ...WORLD.knobs };
+  Object.assign(WORLD.knobs, { dropPct: 0, delayMs: 0, jitter: 0, reorder: false, seed: 1 });
+  if (ch.knobs) Object.assign(WORLD.knobs, ch.knobs);
   const results = [];
   for (const test of ch.tests || []) {
     const maxT = test.t || 0;
     const env = runHeadless(maxT, compileDevicesForChallenge());
     results.push({ label: test.label || ('t=' + maxT), pass: evalAssert(test.assert, env) });
   }
+  WORLD.knobs = savedKnobs;
+  setSeed(WORLD.knobs.seed);
   return results;
 }
 
