@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sort Driver — SortLab</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #09090f; --bg2: #0f0f1a; --bg3: #16162a; --bg4: #1e1e36;
+    --border: #2a2a4a; --border2: #3a3a6a;
+    --text: #e8e8f0; --muted: #6060a0;
+    --cyan: #00ddff; --green: #00ff88; --red: #ff5566; --orange: #ffaa00;
+    --font: 'Outfit', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding: 16px 24px; }
+  .topbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .back { color: var(--muted); font-size: 13px; text-decoration: none; }
+  .back:hover { color: var(--text); }
+  h1 { font-size: 20px; font-weight: 700; }
+  h1 em { color: var(--cyan); font-style: normal; }
+  .spacer { flex: 1; }
+  button {
+    padding: 8px 14px; background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); border-radius: 6px; cursor: pointer; font-family: var(--font);
+    font-size: 13px; font-weight: 600; transition: background .12s, border-color .12s;
+  }
+  button:hover:not(:disabled) { background: var(--bg4); border-color: var(--cyan); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  select { padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); border-radius: 6px; font-family: var(--font); font-size: 13px; }
+
+  .canvas-wrap { padding: 14px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; }
+  canvas { display: block; width: 100%; height: 200px; background: #050510; border-radius: 6px; }
+
+  .panel {
+    margin-top: 16px; padding: 14px 16px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  .pointer-line { font-family: var(--mono); font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .pointer-line b { color: var(--cyan); font-weight: 600; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .feedback { margin-top: 10px; font-family: var(--mono); font-size: 13px; min-height: 18px; }
+  .feedback.ok    { color: var(--green); }
+  .feedback.wrong { color: var(--red); }
+  .feedback.note  { color: var(--muted); }
+
+  .stats {
+    margin-top: 14px; display: flex; gap: 18px; font-family: var(--mono); font-size: 12px; color: var(--muted);
+    padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .stats b { color: var(--text); font-weight: 600; }
+  .robot-row { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .done-banner { margin-top: 10px; padding: 10px; border-radius: 6px; background: rgba(0,255,136,0.10); color: var(--green); font-family: var(--mono); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="back" href="../">← sort-lab</a>
+  <h1>Sort <em>Driver</em></h1>
+  <div class="spacer"></div>
+  <label style="color:var(--muted); font-family:var(--mono); font-size:12px;">algorytm</label>
+  <select id="ctl-algo">
+    <option value="bubble" selected>Bubble</option>
+    <option value="selection">Selection</option>
+    <option value="insertion">Insertion</option>
+  </select>
+  <button id="btn-deal">🎲 Nowa ręka</button>
+</div>
+
+<div class="canvas-wrap">
+  <canvas id="cvs"></canvas>
+</div>
+
+<div class="panel">
+  <div class="pointer-line" id="pointers"></div>
+  <div class="actions" id="actions"></div>
+  <div class="feedback" id="feedback"></div>
+  <div class="stats">
+    <span>twoje porównania <b id="stat-compares">0</b></span>
+    <span>twoje zamiany <b id="stat-swaps">0</b></span>
+    <span>kroków łącznie <b id="stat-ticks">0</b></span>
+  </div>
+  <div class="robot-row">
+    <button id="btn-robot">⚡ Tryb robota — niech algorytm dokończy</button>
+  </div>
+  <div id="done-banner"></div>
+</div>
+
+<script src="../core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const SL = window.sortlab;
+  if (!SL) { document.body.innerHTML = '<p style="color:#f55">core.js failed to load</p>'; return; }
+
+  const N = 6;  // small enough for a kid to drive to completion
+
+  // === Driver state ===
+  // Each algorithm has its own state machine. We model only the shape of
+  // operations the kid presses; the array stays in items[] throughout.
+  const state = {
+    algo: 'bubble',
+    items: [],
+    counters: { compares: 0, swaps: 0, ticks: 0 },
+    feedback: '',
+    feedbackKind: 'note',
+    done: false,
+    // Per-algorithm cursor:
+    bub: { i: 0, j: 0, lastCompare: null },     // lastCompare: 'ok' | 'wrong' | null
+    sel: { i: 0, j: 0, minIdx: 0, lastCompare: null, passDone: false },
+    ins: { i: 1, j: 1, lastCompare: null },
+  };
+
+  function deal() {
+    state.items = SL.dealRandomHand(N);
+    // Avoid an already-sorted deal so there's something to do.
+    if (isSorted(state.items)) {
+      const t = state.items[0]; state.items[0] = state.items[N - 1]; state.items[N - 1] = t;
+    }
+    state.counters = { compares: 0, swaps: 0, ticks: 0 };
+    state.feedback = ''; state.feedbackKind = 'note';
+    state.done = false;
+    state.bub = { i: 0, j: 0, lastCompare: null };
+    state.sel = { i: 0, j: 1, minIdx: 0, lastCompare: null, passDone: false };
+    state.ins = { i: 1, j: 1, lastCompare: null };
+    document.getElementById('done-banner').innerHTML = '';
+    render();
+  }
+  function isSorted(items) {
+    for (let i = 1; i < items.length; i++) if (items[i - 1].value > items[i].value) return false;
+    return true;
+  }
+
+  // === Primitives ===
+  // Bubble has Compare / Swap / Next.
+  function bubbleCompare() {
+    const c = state.bub;
+    state.counters.compares++; state.counters.ticks++;
+    const a = state.items[c.j].value, b = state.items[c.j + 1].value;
+    if (a <= b) { c.lastCompare = 'ok'; setFeedback(`a[${c.j}]=${a} ≤ a[${c.j+1}]=${b} — w porządku ✓`, 'ok'); }
+    else        { c.lastCompare = 'wrong'; setFeedback(`a[${c.j}]=${a} > a[${c.j+1}]=${b} — trzeba zamienić ✗`, 'wrong'); }
+    render();
+  }
+  function bubbleSwap() {
+    const c = state.bub;
+    if (c.lastCompare !== 'wrong') { setFeedback('najpierw porównaj — Swap robisz tylko gdy źle', 'note'); return; }
+    state.counters.swaps++; state.counters.ticks++;
+    SL.applyOp(state.items, { kind: 'swap', i: c.j, j: c.j + 1 });
+    c.lastCompare = null;
+    setFeedback(`zamieniono a[${c.j}] i a[${c.j+1}]`, 'ok');
+    render();
+  }
+  function bubbleNext() {
+    const c = state.bub;
+    state.counters.ticks++;
+    c.lastCompare = null;
+    c.j++;
+    // End of pass: largest in unsorted region is now at position N-1-i, fix.
+    if (c.j >= state.items.length - 1 - c.i) {
+      c.i++;
+      c.j = 0;
+      if (c.i >= state.items.length - 1) { finish(); return; }
+      setFeedback(`koniec przejścia ${c.i} — zaczynam od początku`, 'note');
+    } else {
+      setFeedback('', 'note');
+    }
+    render();
+  }
+
+  // Selection: Compare / Mark min / Next / Swap-pass-end (combined into Next when at end).
+  function selectionCompare() {
+    const c = state.sel;
+    state.counters.compares++; state.counters.ticks++;
+    const a = state.items[c.j].value, b = state.items[c.minIdx].value;
+    if (a < b) { c.lastCompare = 'smaller'; setFeedback(`a[${c.j}]=${a} < min (a[${c.minIdx}]=${b}) — możesz oznaczyć nowe min`, 'ok'); }
+    else       { c.lastCompare = 'not-smaller'; setFeedback(`a[${c.j}]=${a} ≥ min (a[${c.minIdx}]=${b}) — min bez zmian`, 'note'); }
+    render();
+  }
+  function selectionMark() {
+    const c = state.sel;
+    if (c.lastCompare !== 'smaller') { setFeedback('Mark dopiero gdy znalazłeś mniejsze', 'note'); return; }
+    c.minIdx = c.j;
+    c.lastCompare = null;
+    state.counters.ticks++;
+    setFeedback(`min := pozycja ${c.minIdx}`, 'ok');
+    render();
+  }
+  function selectionNext() {
+    const c = state.sel;
+    state.counters.ticks++;
+    c.lastCompare = null;
+    c.j++;
+    if (c.j >= state.items.length) {
+      // End of pass: swap a[i] and a[minIdx] if different, then start next pass.
+      if (c.minIdx !== c.i) {
+        SL.applyOp(state.items, { kind: 'swap', i: c.i, j: c.minIdx });
+        state.counters.swaps++;
+      }
+      c.i++;
+      if (c.i >= state.items.length - 1) { finish(); return; }
+      c.minIdx = c.i;
+      c.j = c.i + 1;
+      setFeedback(`koniec przejścia. Nowe min := pozycja ${c.i}`, 'note');
+    } else {
+      setFeedback('', 'note');
+    }
+    render();
+  }
+
+  // Insertion: Compare-with-left / Slide-left / Next (next pickup).
+  function insertionCompare() {
+    const c = state.ins;
+    if (c.j === 0) { setFeedback('jesteś już na początku — nic nie ma na lewo', 'note'); return; }
+    state.counters.compares++; state.counters.ticks++;
+    const a = state.items[c.j - 1].value, b = state.items[c.j].value;
+    if (a > b) { c.lastCompare = 'should-slide'; setFeedback(`a[${c.j-1}]=${a} > a[${c.j}]=${b} — przesuń w lewo ✗`, 'wrong'); }
+    else       { c.lastCompare = 'in-place';     setFeedback(`a[${c.j-1}]=${a} ≤ a[${c.j}]=${b} — karta jest na miejscu ✓`, 'ok'); }
+    render();
+  }
+  function insertionSlide() {
+    const c = state.ins;
+    if (c.lastCompare !== 'should-slide') { setFeedback('Slide tylko po porównaniu pokazującym, że trzeba', 'note'); return; }
+    SL.applyOp(state.items, { kind: 'swap', i: c.j - 1, j: c.j });
+    state.counters.swaps++; state.counters.ticks++;
+    c.j--;
+    c.lastCompare = null;
+    setFeedback(`przesunięto kartę na pozycję ${c.j}`, 'ok');
+    render();
+  }
+  function insertionNext() {
+    const c = state.ins;
+    state.counters.ticks++;
+    c.lastCompare = null;
+    c.i++;
+    c.j = c.i;
+    if (c.i >= state.items.length) { finish(); return; }
+    setFeedback(`nowa karta do wstawienia: pozycja ${c.i}`, 'note');
+    render();
+  }
+
+  // === Robot mode ===
+  // Hand control to the algorithm: replay from current state to done.
+  // We can't resume mid-algorithm, so robot just runs the chosen algorithm
+  // on the CURRENT items array (whatever state the kid left it in).
+  function robotFinish() {
+    if (state.done) return;
+    const algo = SL.ALGORITHMS[state.algo].fn;
+    const ops = [];
+    for (const op of algo(state.items)) ops.push(op);
+    let i = 0;
+    const step = () => {
+      if (i >= ops.length) { finish('robot dokończył'); return; }
+      const op = ops[i++];
+      if (op.kind === 'compare') state.counters.compares++;
+      else if (op.kind === 'swap' || op.kind === 'set') state.counters.swaps++;
+      state.counters.ticks++;
+      SL.applyOp(state.items, op);
+      render();
+      if (i < ops.length) setTimeout(step, 100);
+      else { finish('robot dokończył'); }
+    };
+    setFeedback('🤖 robot pracuje...', 'note');
+    step();
+  }
+
+  function finish(msg) {
+    state.done = true;
+    document.getElementById('done-banner').innerHTML =
+      '<div class="done-banner">🎉 ' + (msg || 'gotowe — posortowane!') + '</div>';
+    render();
+  }
+
+  // === Render ===
+  function setFeedback(txt, kind) {
+    state.feedback = txt;
+    state.feedbackKind = kind || 'note';
+  }
+
+  function pointersText() {
+    const a = state.algo;
+    if (a === 'bubble')    return `przejście <b>i = ${state.bub.i}</b>, porównuję <b>j = ${state.bub.j}</b> z <b>j+1 = ${state.bub.j + 1}</b>`;
+    if (a === 'selection') return `pozycja <b>i = ${state.sel.i}</b>, skanuję <b>j = ${state.sel.j}</b>, najmniejsze dotąd <b>min = ${state.sel.minIdx}</b>`;
+    if (a === 'insertion') return `karta na <b>j = ${state.ins.j}</b> (zaczęła z i = ${state.ins.i})`;
+    return '';
+  }
+
+  function highlightsForCurrent() {
+    const mark = {}, glow = [];
+    if (state.algo === 'bubble') {
+      const c = state.bub;
+      if (c.j < state.items.length)     { mark[c.j] = 'j'; glow.push(c.j); }
+      if (c.j + 1 < state.items.length) { mark[c.j + 1] = 'j+1'; glow.push(c.j + 1); }
+    } else if (state.algo === 'selection') {
+      const c = state.sel;
+      if (c.i < state.items.length) mark[c.i] = 'i';
+      if (c.j < state.items.length) { mark[c.j] = 'j'; glow.push(c.j); }
+      if (c.minIdx < state.items.length && c.minIdx !== c.i && c.minIdx !== c.j) {
+        mark[c.minIdx] = 'min'; glow.push(c.minIdx);
+      } else if (c.minIdx === c.i) {
+        mark[c.i] = 'i/min';
+      }
+    } else if (state.algo === 'insertion') {
+      const c = state.ins;
+      if (c.j < state.items.length) { mark[c.j] = 'j'; glow.push(c.j); }
+      if (c.j > 0) { mark[c.j - 1] = 'j-1'; glow.push(c.j - 1); }
+    }
+    return { glow, mark };
+  }
+
+  function actionsForAlgo() {
+    const root = document.getElementById('actions');
+    root.innerHTML = '';
+    const make = (label, key, handler, enabled) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.dataset.key = key;
+      b.disabled = !enabled || state.done;
+      b.addEventListener('click', handler);
+      root.appendChild(b);
+    };
+    if (state.algo === 'bubble') {
+      const c = state.bub;
+      make('👁 Porównaj', 'compare', bubbleCompare, c.lastCompare === null);
+      make('↔ Zamień',    'swap',    bubbleSwap,    c.lastCompare === 'wrong');
+      make('▶ Następne',  'next',    bubbleNext,    c.lastCompare !== null || c.lastCompare === null);
+    } else if (state.algo === 'selection') {
+      const c = state.sel;
+      make('👁 Porównaj',    'compare', selectionCompare, c.j < state.items.length && c.lastCompare === null);
+      make('🏷 Oznacz min',  'mark',    selectionMark,    c.lastCompare === 'smaller');
+      make('▶ Następne',     'next',    selectionNext,    true);
+    } else if (state.algo === 'insertion') {
+      const c = state.ins;
+      make('👁 Porównaj z lewą', 'compare', insertionCompare, c.j > 0 && c.lastCompare === null);
+      make('↔ Przesuń w lewo',  'slide',   insertionSlide,   c.lastCompare === 'should-slide');
+      make('▶ Następna karta',  'next',    insertionNext,    c.j === 0 || c.lastCompare === 'in-place');
+    }
+  }
+
+  function render() {
+    const cvs = document.getElementById('cvs');
+    if (cvs.width !== cvs.clientWidth) cvs.width = cvs.clientWidth;
+    cvs.height = 200;
+    SL.renderBars(cvs, state.items, highlightsForCurrent());
+    document.getElementById('pointers').innerHTML = pointersText();
+    actionsForAlgo();
+    const fb = document.getElementById('feedback');
+    fb.textContent = state.feedback;
+    fb.className = 'feedback ' + state.feedbackKind;
+    document.getElementById('stat-compares').textContent = state.counters.compares;
+    document.getElementById('stat-swaps').textContent    = state.counters.swaps;
+    document.getElementById('stat-ticks').textContent    = state.counters.ticks;
+  }
+
+  // === Bindings ===
+  document.getElementById('btn-deal').addEventListener('click', deal);
+  document.getElementById('ctl-algo').addEventListener('change', e => {
+    state.algo = e.target.value;
+    deal();
+  });
+  document.getElementById('btn-robot').addEventListener('click', robotFinish);
+  window.addEventListener('resize', () => render());
+
+  deal();
+  window.sortdriver = { state, deal };
+})();
+</script>
+
+</body>
+</html>
