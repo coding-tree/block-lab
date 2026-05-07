@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sort Cards — SortLab</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #09090f; --bg2: #0f0f1a; --bg3: #16162a; --bg4: #1e1e36;
+    --border: #2a2a4a; --border2: #3a3a6a;
+    --text: #e8e8f0; --muted: #6060a0;
+    --cyan: #00ddff; --green: #00ff88; --orange: #ffaa00; --pink: #ff55ff;
+    --font: 'Outfit', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding: 16px 24px; }
+  .topbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .back { color: var(--muted); font-size: 13px; text-decoration: none; }
+  .back:hover { color: var(--text); }
+  h1 { font-size: 20px; font-weight: 700; }
+  h1 em { color: var(--cyan); font-style: normal; }
+  .spacer { flex: 1; }
+  button {
+    padding: 6px 14px; background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); border-radius: 6px; cursor: pointer; font-family: var(--font);
+    font-size: 13px; font-weight: 600;
+  }
+  button:hover { background: var(--bg4); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  select { padding: 6px 10px; background: var(--bg3); border: 1px solid var(--border2); color: var(--text); border-radius: 6px; font-family: var(--font); font-size: 13px; }
+
+  .goal { color: var(--muted); margin-bottom: 14px; font-size: 14px; }
+  .hand-wrap { padding: 18px 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; min-height: 180px; }
+  .hand {
+    display: flex; gap: 6px; align-items: flex-end;
+    min-height: 140px;
+  }
+  .card {
+    flex: 1 1 0; min-width: 36px; max-width: 90px;
+    background: var(--bg3); border: 2px solid var(--border2); border-radius: 8px;
+    cursor: grab; user-select: none;
+    display: flex; flex-direction: column; align-items: stretch; padding: 8px 6px 6px;
+    position: relative; transition: transform .12s, border-color .12s, box-shadow .12s;
+  }
+  .card:active { cursor: grabbing; }
+  .card.dragging { opacity: 0.4; }
+  .card.dropzone { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,221,255,0.45); }
+  .card-num { font-family: var(--mono); font-weight: 700; font-size: 18px; text-align: center; color: var(--text); margin-bottom: 6px; }
+  .card-bar { width: 100%; border-radius: 4px; min-height: 4px; }
+
+  .panel {
+    margin-top: 16px; padding: 12px 14px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 8px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .stat { color: var(--muted); }
+  .stat b { color: var(--text); font-weight: 600; }
+  .style-tag { padding: 4px 10px; border-radius: 4px; background: var(--bg3); color: var(--cyan); font-weight: 700; }
+  .style-tag.match { background: rgba(0,255,136,0.15); color: var(--green); }
+  .style-tag.own   { background: rgba(255,170,0,0.15); color: var(--orange); }
+
+  .robot {
+    margin-top: 16px;
+    padding: 14px 16px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  .robot h3 { font-size: 14px; margin-bottom: 8px; color: var(--muted); font-family: var(--mono); font-weight: 500; letter-spacing: 1px; text-transform: uppercase; }
+  .robot canvas { display: block; width: 100%; height: 130px; background: #050510; border-radius: 6px; margin-top: 8px; }
+  .robot-stats { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .robot-stats b { color: var(--text); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="back" href="../">← sort-lab</a>
+  <h1>Sort <em>Cards</em></h1>
+  <div class="spacer"></div>
+  <select id="ctl-size">
+    <option value="8">8 kart</option>
+    <option value="10" selected>10 kart</option>
+    <option value="12">12 kart</option>
+  </select>
+  <button id="btn-deal">🎲 Nowa ręka</button>
+  <button id="btn-undo">↺ Cofnij</button>
+</div>
+
+<p class="goal">Ułóż karty od najmniejszej do największej. Przeciągaj i upuszczaj.</p>
+
+<div class="hand-wrap">
+  <div class="hand" id="hand"></div>
+</div>
+
+<div class="panel">
+  <span class="stat">twoje ruchy <b id="stat-moves">0</b></span>
+  <span class="stat">stan: <b id="stat-state">w toku</b></span>
+  <span class="stat">styl: <span class="style-tag" id="style-tag">—</span></span>
+  <div class="spacer"></div>
+  <span class="stat">pokaż jak to robi:</span>
+  <select id="robot-algo">
+    <option value="bubble">bubble</option>
+    <option value="selection" selected>selection</option>
+    <option value="insertion">insertion</option>
+    <option value="merge">merge</option>
+    <option value="quick">quick</option>
+  </select>
+  <button id="btn-robot">🤖 Robot</button>
+</div>
+
+<div class="robot" id="robot-panel" style="display:none">
+  <h3>Robot · <span id="robot-name"></span></h3>
+  <canvas id="robot-canvas"></canvas>
+  <div class="robot-stats">
+    porównań <b id="robot-compares">0</b> · zamian <b id="robot-swaps">0</b> · kroków <b id="robot-ticks">0</b>
+  </div>
+</div>
+
+<script src="../core.js"></script>
+<script>
+(function () {
+  'use strict';
+  const SL = window.sortlab;
+  if (!SL) { document.body.innerHTML = '<p style="color:#f55">core.js failed to load</p>'; return; }
+
+  const state = {
+    n: 10,
+    initialHand: [],   // copy of original deal — used for robot replay
+    hand: [],          // current arrangement
+    moves: [],         // [{ from, to, byId }]
+    history: [],       // [hand snapshots] for undo
+    sorted: false,
+    style: '—',
+  };
+
+  // === Hand rendering ===
+  function dealHand() {
+    state.initialHand = SL.dealRandomHand(state.n);
+    // Avoid an already-sorted starting deal — would be no fun.
+    if (isSorted(state.initialHand)) {
+      const t = state.initialHand[0]; state.initialHand[0] = state.initialHand.at(-1); state.initialHand[state.initialHand.length - 1] = t;
+    }
+    state.hand = state.initialHand.map(x => ({ ...x }));
+    state.moves = [];
+    state.history = [];
+    state.sorted = false;
+    state.style = '—';
+    renderHand();
+    renderPanel();
+    document.getElementById('robot-panel').style.display = 'none';
+  }
+
+  function isSorted(h) {
+    for (let i = 1; i < h.length; i++) if (h[i - 1].value > h[i].value) return false;
+    return true;
+  }
+
+  function renderHand() {
+    const root = document.getElementById('hand');
+    root.innerHTML = '';
+    const maxValue = Math.max(...state.hand.map(x => x.value), 1);
+    state.hand.forEach((it, idx) => {
+      const c = document.createElement('div');
+      c.className = 'card';
+      c.draggable = true;
+      c.dataset.idx = idx;
+      c.innerHTML = `
+        <div class="card-num">${it.value}</div>
+        <div class="card-bar" style="height:${(it.value / maxValue) * 90}px; background:${it.color}"></div>
+      `;
+      bindCard(c);
+      root.appendChild(c);
+    });
+  }
+
+  function renderPanel() {
+    document.getElementById('stat-moves').textContent = state.moves.length;
+    document.getElementById('stat-state').textContent = state.sorted ? '✓ posortowane' : 'w toku';
+    const tag = document.getElementById('style-tag');
+    tag.textContent = state.style;
+    tag.className = 'style-tag' +
+      (state.sorted && state.style !== '—' && state.style !== 'własny styl' ? ' match' : '') +
+      (state.style === 'własny styl' ? ' own' : '');
+  }
+
+  // === Drag & drop ===
+  let dragSrc = null;
+  function bindCard(el) {
+    el.addEventListener('dragstart', e => {
+      dragSrc = Number(el.dataset.idx);
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      // Required for Firefox to actually start a drag
+      e.dataTransfer.setData('text/plain', String(dragSrc));
+    });
+    el.addEventListener('dragend', () => { el.classList.remove('dragging'); clearDropzones(); });
+    el.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; el.classList.add('dropzone'); });
+    el.addEventListener('dragleave', () => el.classList.remove('dropzone'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('dropzone');
+      const tgt = Number(el.dataset.idx);
+      if (dragSrc === null || dragSrc === tgt) return;
+      moveCard(dragSrc, tgt);
+      dragSrc = null;
+    });
+  }
+  function clearDropzones() {
+    document.querySelectorAll('.card.dropzone').forEach(el => el.classList.remove('dropzone'));
+  }
+
+  // Pick up the card at `from` and drop it BEFORE the card at `to`
+  // (or at the end). Other cards shift to fill the gap.
+  function moveCard(from, to) {
+    state.history.push(state.hand.map(x => ({ ...x })));
+    const moved = state.hand[from];
+    const arr = state.hand.slice();
+    arr.splice(from, 1);
+    const insertAt = to > from ? to : to;  // adjust for shift after splice
+    arr.splice(insertAt, 0, moved);
+    state.hand = arr;
+    state.moves.push({ from, to: insertAt, id: moved.id });
+    if (isSorted(state.hand)) {
+      state.sorted = true;
+      state.style = detectStyle(state.moves);
+    }
+    renderHand();
+    renderPanel();
+  }
+
+  function undo() {
+    if (state.history.length === 0) return;
+    state.hand = state.history.pop();
+    state.moves.pop();
+    state.sorted = isSorted(state.hand);
+    if (state.sorted) state.style = detectStyle(state.moves);
+    else state.style = '—';
+    renderHand();
+    renderPanel();
+  }
+
+  // === Pattern detector ===
+  // Each move is classified by its (to - from) signature:
+  //   to - from = +1   → "bubble-step"    (push left card right by one)
+  //   to - from = -1   → "insertion-step" (slide right card left by one)
+  //   to - from < -1   → "selection-step" (long jump leftward — typically
+  //                       carrying a small card to the front of unsorted)
+  // Majority class wins. Otherwise it's "własny styl".
+  function detectStyle(moves) {
+    if (moves.length === 0) return '—';
+    let bubble = 0, insertion = 0, selection = 0;
+    for (const m of moves) {
+      const d = m.to - m.from;
+      if (d ===  1) bubble++;
+      else if (d === -1) insertion++;
+      else if (d  <  -1) selection++;
+    }
+    const total = moves.length;
+    if (bubble    / total >= 0.7) return 'bubble';
+    if (insertion / total >= 0.7) return 'insertion';
+    if (selection / total >= 0.6) return 'selection';
+    return 'własny styl';
+  }
+
+  // === Robot replay ===
+  function runRobot(algoKey) {
+    const algo = SL.ALGORITHMS[algoKey];
+    const initial = state.initialHand.map(x => ({ ...x }));
+    const items = initial.slice();
+    const ops = [];
+    for (const op of algo.fn(initial)) ops.push(op);
+
+    const panel = document.getElementById('robot-panel');
+    const cvs = document.getElementById('robot-canvas');
+    panel.style.display = 'block';
+    document.getElementById('robot-name').textContent = algo.name;
+    cvs.width = cvs.clientWidth;
+    cvs.height = 130;
+    SL.renderBars(cvs, items, {});
+
+    const counters = SL.makeCounters();
+    let i = 0, lastOp = null, mark = {};
+    const step = () => {
+      if (i >= ops.length) return;
+      const op = ops[i++];
+      lastOp = op;
+      SL.applyOp(items, op);
+      SL.tallyOp(counters, op);
+      if (op.kind === 'mark') {
+        if (op.label === 'i') mark = { [op.i]: 'i' };
+        else mark[op.i] = op.label;
+      }
+      const glow = (op.kind === 'compare' || op.kind === 'swap') ? [op.i, op.j] : (op.kind === 'set' ? [op.i] : []);
+      SL.renderBars(cvs, items, { glow, mark });
+      document.getElementById('robot-compares').textContent = counters.compares;
+      document.getElementById('robot-swaps').textContent    = counters.swaps + counters.sets;
+      document.getElementById('robot-ticks').textContent    = counters.ticks;
+      if (i < ops.length) setTimeout(step, 90);  // ~11 ops/sec — easy to follow
+    };
+    step();
+  }
+
+  // === Bindings ===
+  document.getElementById('btn-deal').addEventListener('click', dealHand);
+  document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('ctl-size').addEventListener('change', e => {
+    state.n = Number(e.target.value);
+    dealHand();
+  });
+  document.getElementById('btn-robot').addEventListener('click', () => {
+    const k = document.getElementById('robot-algo').value;
+    runRobot(k);
+  });
+
+  // Allow drop on the wrapper itself (drop at end of hand)
+  document.getElementById('hand').addEventListener('dragover', e => e.preventDefault());
+
+  // Boot
+  dealHand();
+
+  // Expose for tests
+  window.sortcards = { state, detectStyle, moveCard };
+})();
+</script>
+
+</body>
+</html>
