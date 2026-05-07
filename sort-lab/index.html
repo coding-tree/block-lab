@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SortLab — algorytmy sortowania</title>
+<style>
+  body { background: #09090f; color: #e8e8f0; font-family: 'Outfit', sans-serif; padding: 40px; }
+  h1 { font-weight: 800; letter-spacing: -0.5px; }
+  p { color: #6060a0; max-width: 60ch; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 24px; max-width: 800px; }
+  .card { display: block; padding: 18px; background: #0f0f1a; border: 1px solid #2a2a4a; border-radius: 8px; color: #e8e8f0; text-decoration: none; transition: border-color .12s, transform .12s; }
+  .card:hover { border-color: #00ddff; transform: translateY(-2px); }
+  .card h2 { margin: 0 0 6px 0; font-size: 18px; }
+  .card p { color: #8080b0; font-size: 13px; margin: 0; }
+  .back { color: #6060a0; font-size: 13px; text-decoration: none; }
+  .back:hover { color: #e8e8f0; }
+</style>
+</head>
+<body>
+<a class="back" href="../">← block-lab</a>
+<h1>SortLab 🔢</h1>
+<p>Trzy aplikacje, trzy spojrzenia na sortowanie. Patrz, baw się, prowadź.</p>
+<div class="grid">
+  <a class="card" href="race/">
+    <h2>👁️ Sort Race</h2>
+    <p>Algorytmy ścigają się obok siebie. Zobacz różnicę szybkości na żywo.</p>
+  </a>
+  <a class="card" href="cards/">
+    <h2>✋ Sort Cards</h2>
+    <p>Ułóż karty po swojemu. Sprawdź, jaki algorytm właśnie zrobiłeś.</p>
+  </a>
+  <a class="card" href="driver/">
+    <h2>🎯 Sort Driver</h2>
+    <p>Prowadź algorytm krok po kroku. Naciskaj Compare, Swap, Next.</p>
+  </a>
+</div>
+<script src="core.js"></script>
+</body>
+</html>
