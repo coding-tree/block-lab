@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sort Race — SortLab</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #09090f; --bg2: #0f0f1a; --bg3: #16162a; --bg4: #1e1e36;
+    --border: #2a2a4a; --border2: #3a3a6a;
+    --text: #e8e8f0; --muted: #6060a0;
+    --cyan: #00ddff; --pink: #ff55ff; --green: #00ff88; --orange: #ffaa00;
+    --font: 'Outfit', sans-serif;
+    --mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; padding: 16px 24px; }
+  .topbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .back { color: var(--muted); font-size: 13px; text-decoration: none; }
+  .back:hover { color: var(--text); }
+  h1 { font-size: 20px; font-weight: 700; }
+  h1 em { color: var(--cyan); font-style: normal; }
+  .spacer { flex: 1; }
+  button {
+    padding: 6px 14px; background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text); border-radius: 6px; cursor: pointer; font-family: var(--font);
+    font-size: 13px; font-weight: 600;
+  }
+  button:hover { background: var(--bg4); }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .controls {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--bg2);
+    border: 1px solid var(--border); border-radius: 8px;
+    margin-bottom: 16px; font-family: var(--mono); font-size: 12px;
+  }
+  .control { display: flex; align-items: center; gap: 8px; }
+  .control label { color: var(--muted); }
+  .control input[type="range"] { width: 110px; accent-color: var(--cyan); }
+  .control .val { color: var(--cyan); min-width: 38px; text-align: right; }
+
+  .algos { display: flex; gap: 10px; flex-wrap: wrap; }
+  .algo { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; padding: 3px 8px; border-radius: 4px; background: var(--bg3); border: 1px solid var(--border); font-family: var(--mono); font-size: 12px; }
+  .algo input { accent-color: var(--cyan); cursor: pointer; }
+
+  .tracks { display: flex; flex-direction: column; gap: 10px; }
+  .track {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .track.done { border-color: var(--green); }
+  .track-header {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 6px;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .track-name { font-size: 14px; font-weight: 700; min-width: 90px; }
+  .track-stat { color: var(--muted); }
+  .track-stat b { color: var(--text); font-weight: 600; }
+  .track-status { margin-left: auto; }
+  .track-status.done { color: var(--green); font-weight: 700; }
+  canvas { display: block; width: 100%; height: 110px; background: #050510; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="back" href="../">← sort-lab</a>
+  <h1>Sort <em>Race</em></h1>
+  <div class="spacer"></div>
+  <button id="btn-shuffle">🎲 Tasuj</button>
+  <button id="btn-play">▶ Start</button>
+  <button id="btn-step">⏭ Krok</button>
+</div>
+
+<div class="controls">
+  <div class="algos" id="algo-picker"></div>
+  <div class="control">
+    <label for="ctl-size">elementy</label>
+    <input id="ctl-size" type="range" min="8" max="50" value="30">
+    <span class="val" id="ctl-size-val">30</span>
+  </div>
+  <div class="control">
+    <label for="ctl-speed">prędkość</label>
+    <input id="ctl-speed" type="range" min="0.25" max="4" step="0.25" value="1">
+    <span class="val" id="ctl-speed-val">1×</span>
+  </div>
+</div>
+
+<div class="tracks" id="tracks"></div>
+
+<script src="../core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const SL = window.sortlab;
+  if (!SL) { document.body.innerHTML = '<p style="color:#f55">core.js failed to load</p>'; return; }
+
+  // The default trio is the most dramatic spread: a slow, a medium, a fast.
+  const DEFAULT_ALGOS = ['bubble', 'selection', 'quick'];
+
+  const state = {
+    n: 30,
+    speed: 1,
+    running: false,
+    raf: 0,
+    items: [],          // initial deck shared by all tracks
+    selected: new Set(DEFAULT_ALGOS),
+    tracks: [],         // [{key, name, items, ops, opIdx, counters, done, lastOp, mark}]
+  };
+
+  function buildAlgoPicker() {
+    const root = document.getElementById('algo-picker');
+    root.innerHTML = '';
+    Object.keys(SL.ALGORITHMS).forEach(key => {
+      const wrap = document.createElement('label');
+      wrap.className = 'algo';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = state.selected.has(key);
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.selected.add(key);
+        else state.selected.delete(key);
+        rebuildTracks();
+      });
+      wrap.appendChild(cb);
+      const txt = document.createElement('span');
+      txt.textContent = SL.ALGORITHMS[key].name;
+      wrap.appendChild(txt);
+      root.appendChild(wrap);
+    });
+  }
+
+  function shuffle() {
+    state.items = SL.dealRandomHand(state.n);
+    rebuildTracks();
+  }
+
+  function rebuildTracks() {
+    pause();
+    state.tracks = [...state.selected].map(key => makeTrack(key, state.items));
+    renderTrackList();
+    renderAll();
+  }
+
+  function makeTrack(key, initial) {
+    const algo = SL.ALGORITHMS[key];
+    const ops = [];
+    for (const op of algo.fn(initial)) ops.push(op);
+    return {
+      key, name: algo.name,
+      items: initial.slice(),
+      ops,
+      opIdx: 0,
+      counters: SL.makeCounters(),
+      done: false,
+      lastOp: null,
+      mark: {},        // { i: 'label', ... } persisted across ticks
+    };
+  }
+
+  function renderTrackList() {
+    const root = document.getElementById('tracks');
+    root.innerHTML = '';
+    state.tracks.forEach((track, i) => {
+      const div = document.createElement('div');
+      div.className = 'track' + (track.done ? ' done' : '');
+      div.dataset.idx = i;
+      div.innerHTML = `
+        <div class="track-header">
+          <span class="track-name">${track.name}</span>
+          <span class="track-stat">porównań <b data-stat="compares">0</b></span>
+          <span class="track-stat">zamian <b data-stat="swaps">0</b></span>
+          <span class="track-stat">kroków <b data-stat="ticks">0</b></span>
+          <span class="track-status" data-status>—</span>
+        </div>
+        <canvas></canvas>
+      `;
+      root.appendChild(div);
+      const cvs = div.querySelector('canvas');
+      // Set actual pixel dimensions matching CSS for crisp rendering.
+      cvs.width  = cvs.clientWidth || 800;
+      cvs.height = 110;
+    });
+  }
+
+  function highlightsFor(track) {
+    const glow = [];
+    if (track.lastOp) {
+      if (track.lastOp.kind === 'compare' || track.lastOp.kind === 'swap') {
+        glow.push(track.lastOp.i, track.lastOp.j);
+      } else if (track.lastOp.kind === 'set') {
+        glow.push(track.lastOp.i);
+      }
+    }
+    return { glow, mark: track.mark };
+  }
+
+  function renderAll() {
+    const trackEls = document.querySelectorAll('.track');
+    state.tracks.forEach((track, i) => {
+      const el = trackEls[i]; if (!el) return;
+      el.classList.toggle('done', track.done);
+      el.querySelector('[data-stat="compares"]').textContent = track.counters.compares;
+      el.querySelector('[data-stat="swaps"]').textContent    = track.counters.swaps + track.counters.sets;
+      el.querySelector('[data-stat="ticks"]').textContent    = track.counters.ticks;
+      const status = el.querySelector('[data-status]');
+      if (track.done) { status.className = 'track-status done'; status.textContent = '✓ koniec'; }
+      else            { status.className = 'track-status';      status.textContent = ''; }
+      const cvs = el.querySelector('canvas');
+      // Match canvas pixel size to layout in case of resize.
+      if (cvs.width !== cvs.clientWidth) cvs.width = cvs.clientWidth;
+      SL.renderBars(cvs, track.items, highlightsFor(track));
+    });
+  }
+
+  function stepOne(track) {
+    if (track.done || track.opIdx >= track.ops.length) return false;
+    const op = track.ops[track.opIdx++];
+    track.lastOp = op;
+    SL.applyOp(track.items, op);
+    SL.tallyOp(track.counters, op);
+    if (op.kind === 'mark') {
+      // Marks are non-mutating; clear stale 'min' marks on each new pass.
+      if (op.label === 'i') track.mark = { [op.i]: 'i' };
+      else track.mark[op.i] = op.label;
+    }
+    if (op.kind === 'done') {
+      track.done = true;
+      track.mark = {};
+    }
+    return true;
+  }
+
+  function play() {
+    if (state.running) return;
+    if (state.tracks.every(t => t.done)) return;  // nothing to do
+    state.running = true;
+    document.getElementById('btn-play').textContent = '⏸ Pauza';
+    const OPS_PER_FRAME_AT_1X = 2;
+    let frameAcc = 0;
+    const loop = () => {
+      if (!state.running) return;
+      frameAcc += OPS_PER_FRAME_AT_1X * state.speed;
+      const wholeOps = Math.max(1, Math.floor(frameAcc));
+      frameAcc -= wholeOps;
+      let anyAdvanced = false;
+      for (const track of state.tracks) {
+        for (let k = 0; k < wholeOps && !track.done; k++) {
+          if (stepOne(track)) anyAdvanced = true;
+        }
+      }
+      renderAll();
+      if (state.tracks.every(t => t.done)) { pause(); return; }
+      if (!anyAdvanced) { pause(); return; }
+      state.raf = requestAnimationFrame(loop);
+    };
+    state.raf = requestAnimationFrame(loop);
+  }
+
+  function pause() {
+    state.running = false;
+    cancelAnimationFrame(state.raf);
+    document.getElementById('btn-play').textContent = '▶ Start';
+  }
+
+  // --- Bindings ---
+  document.getElementById('btn-shuffle').addEventListener('click', () => { shuffle(); });
+  document.getElementById('btn-play').addEventListener('click', () => {
+    if (state.running) pause(); else play();
+  });
+  document.getElementById('btn-step').addEventListener('click', () => {
+    pause();
+    state.tracks.forEach(t => stepOne(t));
+    renderAll();
+  });
+  const sizeEl = document.getElementById('ctl-size');
+  const sizeVal = document.getElementById('ctl-size-val');
+  sizeEl.addEventListener('input', () => {
+    state.n = Number(sizeEl.value);
+    sizeVal.textContent = state.n;
+    shuffle();
+  });
+  const speedEl = document.getElementById('ctl-speed');
+  const speedVal = document.getElementById('ctl-speed-val');
+  speedEl.addEventListener('input', () => {
+    state.speed = Number(speedEl.value);
+    speedVal.textContent = state.speed + '×';
+  });
+
+  // Boot
+  buildAlgoPicker();
+  shuffle();
+  // Re-render canvases on resize so bars stay crisp.
+  window.addEventListener('resize', () => renderAll());
+})();
+</script>
+
+</body>
+</html>
