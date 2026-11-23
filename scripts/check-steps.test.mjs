@@ -68,3 +68,33 @@ test('fails when the step line text does not match the list', () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /sort-lab\/index\.html: step line should read "Ten krok w Coding Tree: Ścieżka boczna — Algorytmy i zawody"/);
 });
+
+// The map's `ranks` names, copied from curriculum-map.json in
+// ctdojo-curriculum (commit 61244f5f0bf01ac9791264dc8c659fb7278a61a7).
+const mapRanks = {
+  'baby-bird': 'Baby Bird',
+  white: 'Biały pas',
+  orange: 'Pomarańczowy pas',
+  'orange-blue': 'Pas pomarańczowy z niebieskim paskiem',
+  blue: 'Niebieski pas',
+  'blue-yellow': 'Pas niebieski z żółtym paskiem',
+  yellow: 'Żółty pas',
+  'yellow-green': 'Pas żółty z zielonym paskiem',
+  green: 'Zielony pas',
+  'green-brown': 'Pas zielony z brązowym paskiem',
+  brown: 'Brązowy pas',
+  'brown-gold': 'Pas brązowy ze złotym paskiem',
+  black: 'Czarny pas',
+};
+
+test('belt names are the map ranks names', () => {
+  const ids = JSON.parse(readFileSync(join(root, 'curriculum-step-ids.json'), 'utf8'));
+  const belts = ids.filter((s) => s.id.startsWith('belt.'));
+  assert.equal(belts.length, Object.keys(mapRanks).length);
+  for (const s of belts) assert.equal(s.belt, mapRanks[s.id.split('.')[1]], s.id);
+});
+
+test('the radio-room step line uses the map name for a striped rank', () => {
+  const html = readFileSync(join(root, 'radio-room', 'index.html'), 'utf8');
+  assert.match(html, /Ten krok w Coding Tree: Pas pomarańczowy z niebieskim paskiem — Urządzenia i wiadomości/);
+});

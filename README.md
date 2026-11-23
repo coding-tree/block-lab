@@ -42,10 +42,12 @@ programy”. To element z atrybutem `data-curriculum-step="<id kroku>"`
 Odświeżanie listy: pobierz `curriculum-map.json` z
 [coding-tree/ctdojo-curriculum](https://github.com/coding-tree/ctdojo-curriculum)
 i przepisz do `curriculum-step-ids.json` dla każdego wpisu z `steps` jego
-`id`, `skill` i polską nazwę pasa dla `rank` (np. `white` → „Biały pas”,
-`orange-blue` → „Pomarańczowo-niebieski pas”), a dla każdego wpisu z
-`sidePaths` jego `id`, `belt: "Ścieżka boczna"` i `skill` równe `title`.
-Mapa nie ma dziś polskich nazw pasów, więc są nadane tutaj. Potem uruchom
+`id`, `skill` i jako `belt` nazwę (`name`) z listy `ranks` mapy dla jego
+`rank` (np. `white` → „Biały pas”, `orange-blue` → „Pas pomarańczowy z
+niebieskim paskiem”, `baby-bird` → „Baby Bird”). Nazw nie wymyślaj ani nie
+zmieniaj: to te same nazwy, które pokazuje platforma. Dla każdego wpisu z
+`sidePaths` przepisz jego `id`, `belt: "Ścieżka boczna"` i `skill` równe
+`title`. Potem uruchom
 `node scripts/check-steps.mjs`.
 
 ## Dokumentacja
