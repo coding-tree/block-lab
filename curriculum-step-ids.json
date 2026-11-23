@@ -1,0 +1,18 @@
+[
+  {"id": "belt.baby-bird.how-a-computer-thinks", "belt": "Baby Bird", "skill": "Jak myśli komputer"},
+  {"id": "belt.white.first-programs", "belt": "Biały pas", "skill": "Pierwsze programy"},
+  {"id": "belt.orange.games-with-logic", "belt": "Pomarańczowy pas", "skill": "Gry z logiką"},
+  {"id": "belt.orange-blue.devices-and-messages", "belt": "Pomarańczowo-niebieski pas", "skill": "Urządzenia i wiadomości"},
+  {"id": "belt.blue.first-real-language", "belt": "Niebieski pas", "skill": "Pierwszy prawdziwy język"},
+  {"id": "belt.blue-yellow.finding-your-way", "belt": "Niebiesko-żółty pas", "skill": "Jak odnaleźć się w komputerze"},
+  {"id": "belt.yellow.tools-and-secrets", "belt": "Żółty pas", "skill": "Narzędzia, które działają razem, i tajemnice"},
+  {"id": "belt.yellow-green.scripts-and-history", "belt": "Żółto-zielony pas", "skill": "Skrypty i historia"},
+  {"id": "belt.green.the-web", "belt": "Zielony pas", "skill": "Strony internetowe"},
+  {"id": "belt.green-brown.networks", "belt": "Zielono-brązowy pas", "skill": "Sieci"},
+  {"id": "belt.brown.servers-and-apps", "belt": "Brązowy pas", "skill": "Serwery i aplikacje"},
+  {"id": "belt.brown-gold.defence", "belt": "Brązowo-złoty pas", "skill": "Obrona"},
+  {"id": "belt.black.ship-it-safely", "belt": "Czarny pas", "skill": "Wdróż to bezpiecznie"},
+  {"id": "side.algorithms", "belt": "Ścieżka boczna", "skill": "Algorytmy i zawody"},
+  {"id": "side.tech-world", "belt": "Ścieżka boczna", "skill": "Świat technologii dziś"},
+  {"id": "side.gaming", "belt": "Ścieżka boczna", "skill": "Gry i e-sport"}
+]
