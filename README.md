@@ -22,6 +22,32 @@ Otwórz https://block-lab.codingtree.pl/ albo `index.html` danego katalogu
 bezpośrednio w przeglądarce. To czysty HTML/CSS/JS, bez zależności do
 instalowania i bez kroku budowania.
 
+## Krok w Coding Tree
+
+Każde środowisko przypisane do mapy programu Coding Tree ma na dole strony
+jedną linię kroku, np. „Ten krok w Coding Tree: Biały pas — Pierwsze
+programy”. To element z atrybutem `data-curriculum-step="<id kroku>"`
+(klasa `step-line`), jedyne miejsce z tym tekstem na stronie, więc później
+łatwo zamienić go w link do `/mapa#<id kroku>`.
+
+- `curriculum-steps.json`: katalog środowiska → lista id kroków z mapy
+  (StoryStack i ActorScratch na razie nie mają kroku).
+- `curriculum-step-ids.json`: skopiowana lista kroków mapy, tylko `id`,
+  nazwa pasa (`belt`) i umiejętność (`skill`).
+- `scripts/check-steps.mjs`: sprawdza, że każde id z `curriculum-steps.json`
+  jest na liście, a linia kroku na stronie ma tę nazwę pasa i umiejętność.
+  Uruchom `node scripts/check-steps.mjs` (bez zależności); testy:
+  `node --test scripts/*.test.mjs`.
+
+Odświeżanie listy: pobierz `curriculum-map.json` z
+[coding-tree/ctdojo-curriculum](https://github.com/coding-tree/ctdojo-curriculum)
+i przepisz do `curriculum-step-ids.json` dla każdego wpisu z `steps` jego
+`id`, `skill` i polską nazwę pasa dla `rank` (np. `white` → „Biały pas”,
+`orange-blue` → „Pomarańczowo-niebieski pas”), a dla każdego wpisu z
+`sidePaths` jego `id`, `belt: "Ścieżka boczna"` i `skill` równe `title`.
+Mapa nie ma dziś polskich nazw pasów, więc są nadane tutaj. Potem uruchom
+`node scripts/check-steps.mjs`.
+
 ## Dokumentacja
 
 - `docs/plans/`: projekty i plany BitStack, PixelStack oraz tłumaczenia
